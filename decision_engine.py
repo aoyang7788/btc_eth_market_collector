@@ -27,18 +27,9 @@ def _missing_core(symbol_data: dict[str, Any]) -> list[str]:
             missing.append(f"{tf} structure missing")
         if data.get("ema5") is None or data.get("ema13") is None:
             missing.append(f"{tf} EMA missing")
-        macd = data.get("macd", {})
-        if macd.get("macd") is None or macd.get("signal") is None or macd.get("histogram") is None:
-            missing.append(f"{tf} MACD missing")
         boll = data.get("bollinger", {})
         if boll.get("upper") is None or boll.get("middle") is None or boll.get("lower") is None:
             missing.append(f"{tf} Bollinger missing")
-
-    daily = symbol_data.get("daily_ma", {})
-    if daily.get("ma50") is None:
-        missing.append("MA50 missing")
-    if daily.get("ma200") is None:
-        missing.append("MA200 missing")
 
     derivatives = symbol_data.get("derivatives", {})
     if derivatives.get("funding_rate") is None:
@@ -110,7 +101,6 @@ def evaluate_symbol(symbol: str, symbol_data: dict[str, Any]) -> dict[str, Any]:
     warnings: list[str] = []
     price = _num(symbol_data.get("price", {}).get("last"))
     derivatives = symbol_data.get("derivatives", {})
-    daily = symbol_data.get("daily_ma", {})
     tf_data = symbol_data.get("timeframes", {})
 
     s15 = _structure(symbol_data, "15m")
@@ -126,15 +116,6 @@ def evaluate_symbol(symbol: str, symbol_data: dict[str, Any]) -> dict[str, Any]:
 
     missing = _missing_core(symbol_data)
     reasons.extend(missing)
-
-    ma50 = _num(daily.get("ma50"))
-    ma200 = _num(daily.get("ma200"))
-    if price is not None and ma50 is not None:
-        reasons.append("price above MA50" if price > ma50 else "price below MA50")
-    if price is not None and ma200 is not None:
-        reasons.append("price above MA200" if price > ma200 else "price below MA200")
-    if ma50 is not None and ma200 is not None:
-        reasons.append("MA50 above MA200" if ma50 > ma200 else "MA50 below MA200")
 
     for tf in ["15m", "1h", "4h"]:
         hist = _num(tf_data.get(tf, {}).get("macd", {}).get("histogram"))
@@ -168,13 +149,11 @@ def evaluate_symbol(symbol: str, symbol_data: dict[str, Any]) -> dict[str, Any]:
         consistency in {"bullish_aligned", "bullish_pullback"},
         s4h == "bullish",
         s1h != "bearish",
-        price is not None and ma50 is not None and price >= ma50,
     ]
     short_conditions = [
         consistency in {"bearish_aligned", "bearish_pullback"},
         s4h == "bearish",
         s1h != "bullish",
-        price is not None and ma50 is not None and price <= ma50,
     ]
 
     has_missing = bool(missing)
@@ -224,13 +203,13 @@ def evaluate_symbol(symbol: str, symbol_data: dict[str, Any]) -> dict[str, Any]:
         "inputs_used": [
             "EMA5",
             "EMA13",
-            "MA50",
-            "MA200",
-            "MACD",
             "Bollinger Bands",
             "Open Interest",
             "Funding Rate",
             "Long/Short Ratio",
+            "辅助参考: MA50",
+            "辅助参考: MA200",
+            "辅助参考: MACD",
         ],
     }
 

@@ -1,0 +1,7 @@
+outputs/
+health/
+logs/
+__pycache__/
+**/__pycache__/
+*.pyc
+.env

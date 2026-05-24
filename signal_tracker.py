@@ -107,51 +107,142 @@ def _bb_position(price: Any, bollinger: dict[str, Any]) -> str:
     return "中轨下方"
 
 
-def _score(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> int:
-    score = 50
+def _score_direction(decision_item: dict[str, Any]) -> str | None:
     action = _action(decision_item)
-    consistency = decision_item.get("three_period_consistency")
-    risk = decision_item.get("risk_level")
+    if action == "允许做多":
+        return "long"
+    if action == "允许做空":
+        return "short"
     structures = decision_item.get("structures", {})
-    tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
+    if structures.get("4h") == "bullish":
+        return "long"
+    if structures.get("4h") == "bearish":
+        return "short"
+    return None
+
+
+def _ema_score(snapshot_item: dict[str, Any], direction: str | None) -> int:
+    if direction is None:
+        return 0
+    weights = {"4h": 18, "1h": 14, "15m": 8}
+    total = 0
     price = _num(snapshot_item.get("price", {}).get("last"))
-    ema50 = _num(tf4h.get("ema50"))
-    ema200 = _num(tf4h.get("ema200"))
-    macd_hist = _num(tf4h.get("macd", {}).get("histogram"))
+    for tf, weight in weights.items():
+        data = snapshot_item.get("timeframes", {}).get(tf, {})
+        ema5 = _num(data.get("ema5"))
+        ema13 = _num(data.get("ema13"))
+        if price is None or ema5 is None or ema13 is None:
+            continue
+        if direction == "long" and ema5 > ema13 and price >= ema13:
+            total += weight
+        if direction == "short" and ema5 < ema13 and price <= ema13:
+            total += weight
+    return total
 
-    if action in {"允许做多", "允许做空"}:
-        score += 20
-    else:
-        score -= 5
-    if consistency in {"bullish_aligned", "bearish_aligned"}:
-        score += 15
-    elif consistency in {"bullish_pullback", "bearish_pullback"}:
-        score += 10
-    elif consistency == "conflict":
-        score -= 25
 
-    if structures.get("4h") == structures.get("1h") and structures.get("4h") in {"bullish", "bearish"}:
-        score += 10
-    if structures.get("15m") == structures.get("4h") and structures.get("15m") in {"bullish", "bearish"}:
-        score += 5
+def _bb_score(snapshot_item: dict[str, Any], direction: str | None) -> int:
+    if direction is None:
+        return 0
+    price = _num(snapshot_item.get("price", {}).get("last"))
+    boll = snapshot_item.get("timeframes", {}).get("4h", {}).get("bollinger", {})
+    upper = _num(boll.get("upper"))
+    middle = _num(boll.get("middle"))
+    lower = _num(boll.get("lower"))
+    if price is None or upper is None or middle is None or lower is None:
+        return 0
+    if direction == "long":
+        if middle <= price <= upper:
+            return 25
+        if lower <= price < middle:
+            return 18
+        if price > upper:
+            return 12
+    if direction == "short":
+        if lower <= price <= middle:
+            return 25
+        if middle < price <= upper:
+            return 18
+        if price < lower:
+            return 12
+    return 0
 
-    if macd_hist is None:
-        score -= 5
-    elif (action == "允许做多" and macd_hist > 0) or (action == "允许做空" and macd_hist < 0):
-        score += 5
 
-    if price is None or ema50 is None or ema200 is None:
-        score -= 5
-    elif action == "允许做多" and price >= ema50 >= ema200:
-        score += 5
-    elif action == "允许做空" and price <= ema50 <= ema200:
-        score += 5
+def _support_resistance_score(snapshot_item: dict[str, Any], direction: str | None) -> int:
+    if direction is None:
+        return 0
+    price = _num(snapshot_item.get("price", {}).get("last"))
+    ranges = snapshot_item.get("timeframes", {}).get("15m", {}).get("recent_range", {})
+    high = _num(ranges.get("high"))
+    low = _num(ranges.get("low"))
+    if price is None or high is None or low is None or high <= low:
+        return 0
+    span = high - low
+    if direction == "long":
+        position = (price - low) / span
+        if 0.2 <= position <= 0.85:
+            return 20
+        if 0 <= position < 0.2:
+            return 14
+    if direction == "short":
+        position = (high - price) / span
+        if 0.2 <= position <= 0.85:
+            return 20
+        if 0 <= position < 0.2:
+            return 14
+    return 8
 
-    if risk == "LOW":
-        score += 10
-    elif risk == "HIGH":
-        score -= 20
-    return max(0, min(100, score))
+
+def _funding_score(snapshot_item: dict[str, Any], direction: str | None) -> int:
+    funding = _num(snapshot_item.get("derivatives", {}).get("funding_rate"))
+    if funding is None or direction is None:
+        return 0
+    if abs(funding) <= 0.0005:
+        return 5
+    if direction == "long" and funding < 0:
+        return 5
+    if direction == "short" and funding > 0:
+        return 5
+    return 2
+
+
+def _long_short_score(snapshot_item: dict[str, Any], direction: str | None) -> int:
+    ratio = _num(snapshot_item.get("derivatives", {}).get("long_short_ratio"))
+    if ratio is None or direction is None:
+        return 0
+    if 0.8 <= ratio <= 1.5:
+        return 5
+    if direction == "long" and ratio < 0.8:
+        return 4
+    if direction == "short" and ratio > 1.5:
+        return 4
+    return 2
+
+
+def _oi_score(snapshot_item: dict[str, Any], direction: str | None) -> int:
+    change = _num(snapshot_item.get("derivatives", {}).get("open_interest_change"))
+    if change is None or direction is None:
+        return 0
+    if change > 0:
+        return 5
+    if abs(change) <= 0.5:
+        return 3
+    return 1
+
+
+def _score(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> int:
+    direction = _score_direction(decision_item)
+    return max(
+        0,
+        min(
+            100,
+            _ema_score(snapshot_item, direction)
+            + _bb_score(snapshot_item, direction)
+            + _support_resistance_score(snapshot_item, direction)
+            + _funding_score(snapshot_item, direction)
+            + _long_short_score(snapshot_item, direction)
+            + _oi_score(snapshot_item, direction),
+        ),
+    )
 
 
 def _trade_plan(action: str, entry: float | None, tf15: dict[str, Any]) -> dict[str, Any]:
