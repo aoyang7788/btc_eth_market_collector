@@ -365,6 +365,7 @@ V6 新增两个 systemd 服务模板：
 
 ```env
 TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 BINANCE_FUTURES_BASE_URL=https://fapi.binance.com
 COINGLASS_BASE_URL=https://open-api-v4.coinglass.com
 COINGLASS_API_KEY=
@@ -374,6 +375,32 @@ REQUEST_TIMEOUT_SECONDS=10
 ```
 
 如果 `TELEGRAM_BOT_TOKEN` 为空，`telegram_bot.py` 会明确提示缺失并退出，不会崩溃刷屏。
+
+### Telegram 自动推送
+
+Collector 每次完成分析后，会尝试向 `TELEGRAM_CHAT_ID` 推送 BTC/ETH 简版结果：
+
+- BTC 结果
+- ETH 结果
+- 风险等级
+- 建议动作
+- 是否允许交易
+
+推送失败不会影响主程序采集和循环运行，只会记录到：
+
+```text
+logs/telegram.log
+```
+
+测试 Telegram 推送：
+
+```bash
+cd /opt/btc_eth_market_collector
+source .venv/bin/activate
+python3 telegram_bot.py --test
+```
+
+如果缺少 `TELEGRAM_BOT_TOKEN` 或 `TELEGRAM_CHAT_ID`，命令会输出失败原因，并在 `logs/telegram.log` 中记录。
 
 ### 云端手动验收命令
 
@@ -439,6 +466,12 @@ Telegram systemd 日志：
 
 ```bash
 sudo journalctl -u market-telegram -n 100 --no-pager
+```
+
+Telegram 推送日志：
+
+```bash
+tail -n 100 /opt/btc_eth_market_collector/logs/telegram.log
 ```
 
 实时查看日志：

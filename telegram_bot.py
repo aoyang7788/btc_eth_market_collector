@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -30,6 +31,7 @@ if load_dotenv:
 OUTPUT_DIR = BASE_DIR / os.getenv("OUTPUT_DIR", "outputs")
 
 from health_monitor import format_health_text, read_status  # noqa: E402
+from telegram_notifier import send_test_message  # noqa: E402
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -203,6 +205,18 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="BTC/ETH 市场雷达 Telegram 只读机器人")
+    parser.add_argument("--test", action="store_true", help="发送 Telegram 推送测试消息后退出")
+    args = parser.parse_args()
+
+    if args.test:
+        result = send_test_message()
+        if result.get("ok"):
+            print("Telegram 测试消息发送成功。")
+        else:
+            print(f"Telegram 测试消息发送失败：{result.get('error')}")
+        return
+
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         print("缺少 TELEGRAM_BOT_TOKEN，请在 .env 中配置后再运行。")

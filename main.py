@@ -26,6 +26,7 @@ from reports.json_report import write_json_report
 from reports.markdown_report import write_markdown_report
 from reports.performance_report import write_performance_report
 from signal_tracker import build_signal_statistics, update_signal_history, write_statistics_json
+from telegram_notifier import send_analysis_update
 
 
 def iso_now() -> str:
@@ -308,14 +309,16 @@ def run_once_monitored(interval_minutes: int = RUN_INTERVAL_MINUTES) -> dict[str
             "signal_tracking": "ok" if Path(paths["signal_history_path"]).exists() else "missing",
         }
         record_success(started_at, next_run_at, details)
+        telegram_result = send_analysis_update()
         logger.info(
-            "ROUND_SUCCESS started_at=%s ended_at=%s btc_data=%s eth_data=%s decision_files=%s signal_tracking=%s next_run_at=%s",
+            "ROUND_SUCCESS started_at=%s ended_at=%s btc_data=%s eth_data=%s decision_files=%s signal_tracking=%s telegram_push=%s next_run_at=%s",
             started_at,
             ended_at,
             details["btc_data"],
             details["eth_data"],
             details["decision_files"],
             details["signal_tracking"],
+            "ok" if telegram_result.get("ok") else telegram_result.get("error", "failed"),
             next_run_at,
         )
         return paths
