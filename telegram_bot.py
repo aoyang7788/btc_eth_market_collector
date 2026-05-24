@@ -166,6 +166,34 @@ def build_files_text() -> str:
     return "\n".join(lines)
 
 
+def build_stats_text() -> str:
+    stats = _read_json(OUTPUT_DIR / "signal_statistics.json")
+    if not stats:
+        return "统计报告尚未生成，请先运行 python main.py --once"
+
+    allow_long = stats.get("allow_long", {})
+    allow_short = stats.get("allow_short", {})
+    wait = stats.get("wait", {})
+    recent = stats.get("recent_10", {})
+
+    def pct(value: Any) -> str:
+        return "pending" if value is None else f"{value}%"
+
+    return "\n".join(
+        [
+            "BTC ETH Market Collector",
+            "",
+            f"总信号：{stats.get('total_signals', 0)}",
+            "",
+            f"ALLOW_LONG：{pct(allow_long.get('win_rate'))}",
+            f"ALLOW_SHORT：{pct(allow_short.get('win_rate'))}",
+            f"WAIT：{pct(wait.get('accuracy'))}",
+            "",
+            f"最近10次：{recent.get('wins', 0)}胜{recent.get('losses', 0)}负",
+        ]
+    )
+
+
 async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(build_market_summary())
 
@@ -190,6 +218,10 @@ async def health_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.effective_message.reply_text(format_health_text(read_status()))
 
 
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.effective_message.reply_text(build_stats_text())
+
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
         "BTC/ETH 市场雷达只读查询机器人\n\n"
@@ -200,6 +232,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "/decision - 当前决策摘要\n"
         "/files - 报告文件路径\n"
         "/health - Collector 健康状态\n\n"
+        "/stats - 信号胜率统计\n\n"
         "本机器人只读报告，不采集数据，不连接交易所下单。"
     )
 
@@ -233,6 +266,7 @@ def main() -> None:
     app.add_handler(CommandHandler("decision", decision_command))
     app.add_handler(CommandHandler("files", files_command))
     app.add_handler(CommandHandler("health", health_command))
+    app.add_handler(CommandHandler("stats", stats_command))
 
     print("BTC/ETH 市场雷达只读查询机器人已启动。")
     app.run_polling(allowed_updates=Update.ALL_TYPES)

@@ -8,36 +8,44 @@ from statistics import mean
 from typing import Any
 
 
-HORIZONS = {
+RETURN_HORIZONS = {
     "after_1h_return_pct": 1,
     "after_4h_return_pct": 4,
     "after_24h_return_pct": 24,
-    "after_72h_return_pct": 72,
-    "after_7d_return_pct": 168,
 }
 
-BASE_FIELDS = [
+RESULT_FIELDS = [
+    "after_1h_result",
+    "after_4h_result",
+    "after_24h_result",
+]
+
+FIELDS = [
     "timestamp",
     "symbol",
-    "action",
     "price",
+    "score",
     "risk_level",
-    "reason",
+    "action",
+    "trend_15m",
+    "trend_1h",
+    "trend_4h",
+    "funding_rate",
+    "long_short_ratio",
+    "oi",
+    "ema5",
+    "ema13",
+    "ema50",
+    "ema200",
+    "macd_state",
+    "bb_position",
     "after_1h_return_pct",
     "after_4h_return_pct",
     "after_24h_return_pct",
-    "after_72h_return_pct",
-    "after_7d_return_pct",
+    "after_1h_result",
+    "after_4h_result",
+    "after_24h_result",
 ]
-
-EXTRA_FIELDS = [
-    "structure_15m",
-    "structure_1h",
-    "structure_4h",
-    "three_period_consistency",
-]
-
-FIELDS = BASE_FIELDS + EXTRA_FIELDS
 
 
 def parse_iso(value: str) -> datetime | None:
@@ -51,7 +59,23 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def round_pct(value: float | None) -> float | None:
+def _num(value: Any) -> float | None:
+    try:
+        if value in {"", None}:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmt_num(value: Any) -> Any:
+    number = _num(value)
+    if number is None:
+        return ""
+    return round(number, 8)
+
+
+def _round_pct(value: float | None) -> float | None:
     if value is None:
         return None
     return round(value, 6)
@@ -80,40 +104,148 @@ def write_history(path: Path, rows: list[dict[str, Any]]) -> None:
 def _price_map(snapshot: dict[str, Any]) -> dict[str, float]:
     result = {}
     for symbol, data in snapshot.get("symbols", {}).items():
-        price = data.get("price", {}).get("last")
-        try:
-            if price is not None:
-                result[symbol] = float(price)
-        except (TypeError, ValueError):
-            continue
+        price = _num(data.get("price", {}).get("last"))
+        if price is not None:
+            result[symbol] = price
     return result
 
 
-def _build_rows(decision: dict[str, Any]) -> list[dict[str, Any]]:
+def _action(decision_item: dict[str, Any]) -> str:
+    if decision_item.get("allow_long"):
+        return "ALLOW_LONG"
+    if decision_item.get("allow_short"):
+        return "ALLOW_SHORT"
+    return "WAIT"
+
+
+def _macd_state(macd: dict[str, Any]) -> str:
+    hist = _num(macd.get("histogram"))
+    if hist is None:
+        return "missing"
+    if hist > 0:
+        return "bullish"
+    if hist < 0:
+        return "bearish"
+    return "neutral"
+
+
+def _bb_position(price: Any, bollinger: dict[str, Any]) -> str:
+    value = _num(price)
+    upper = _num(bollinger.get("upper"))
+    middle = _num(bollinger.get("middle"))
+    lower = _num(bollinger.get("lower"))
+    if value is None or upper is None or middle is None or lower is None:
+        return "missing"
+    if value > upper:
+        return "above_upper"
+    if value < lower:
+        return "below_lower"
+    if value >= middle:
+        return "upper_half"
+    return "lower_half"
+
+
+def _score(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> int:
+    score = 50
+    action = _action(decision_item)
+    consistency = decision_item.get("three_period_consistency")
+    risk = decision_item.get("risk_level")
+    structures = decision_item.get("structures", {})
+    tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
+    price = _num(snapshot_item.get("price", {}).get("last"))
+    ema50 = _num(tf4h.get("ema50"))
+    ema200 = _num(tf4h.get("ema200"))
+    macd_hist = _num(tf4h.get("macd", {}).get("histogram"))
+
+    if action in {"ALLOW_LONG", "ALLOW_SHORT"}:
+        score += 20
+    else:
+        score -= 5
+    if consistency in {"bullish_aligned", "bearish_aligned"}:
+        score += 15
+    elif consistency in {"bullish_pullback", "bearish_pullback"}:
+        score += 10
+    elif consistency == "conflict":
+        score -= 25
+
+    if structures.get("4h") == structures.get("1h") and structures.get("4h") in {"bullish", "bearish"}:
+        score += 10
+    if structures.get("15m") == structures.get("4h") and structures.get("15m") in {"bullish", "bearish"}:
+        score += 5
+
+    if macd_hist is None:
+        score -= 5
+    elif (action == "ALLOW_LONG" and macd_hist > 0) or (action == "ALLOW_SHORT" and macd_hist < 0):
+        score += 5
+
+    if price is None or ema50 is None or ema200 is None:
+        score -= 5
+    elif action == "ALLOW_LONG" and price >= ema50 >= ema200:
+        score += 5
+    elif action == "ALLOW_SHORT" and price <= ema50 <= ema200:
+        score += 5
+
+    if risk == "LOW":
+        score += 10
+    elif risk == "HIGH":
+        score -= 20
+    return max(0, min(100, score))
+
+
+def _build_rows(snapshot: dict[str, Any], decision: dict[str, Any]) -> list[dict[str, Any]]:
     timestamp = decision.get("generated_at", "")
     rows = []
-    for symbol, data in decision.get("symbols", {}).items():
-        structures = data.get("structures", {})
+    for symbol, decision_item in decision.get("symbols", {}).items():
+        snapshot_item = snapshot.get("symbols", {}).get(symbol, {})
+        tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
+        derivatives = snapshot_item.get("derivatives", {})
+        structures = decision_item.get("structures", {})
+        price = snapshot_item.get("price", {}).get("last")
         rows.append(
             {
                 "timestamp": timestamp,
                 "symbol": symbol,
-                "action": data.get("suggested_action", ""),
-                "price": data.get("price", ""),
-                "risk_level": data.get("risk_level", ""),
-                "reason": " | ".join(data.get("reason", [])),
+                "price": _fmt_num(price),
+                "score": _score(snapshot_item, decision_item),
+                "risk_level": decision_item.get("risk_level", ""),
+                "action": _action(decision_item),
+                "trend_15m": structures.get("15m", ""),
+                "trend_1h": structures.get("1h", ""),
+                "trend_4h": structures.get("4h", ""),
+                "funding_rate": _fmt_num(derivatives.get("funding_rate")),
+                "long_short_ratio": _fmt_num(derivatives.get("long_short_ratio")),
+                "oi": _fmt_num(derivatives.get("open_interest")),
+                "ema5": _fmt_num(tf4h.get("ema5")),
+                "ema13": _fmt_num(tf4h.get("ema13")),
+                "ema50": _fmt_num(tf4h.get("ema50")),
+                "ema200": _fmt_num(tf4h.get("ema200")),
+                "macd_state": _macd_state(tf4h.get("macd", {})),
+                "bb_position": _bb_position(price, tf4h.get("bollinger", {})),
                 "after_1h_return_pct": "",
                 "after_4h_return_pct": "",
                 "after_24h_return_pct": "",
-                "after_72h_return_pct": "",
-                "after_7d_return_pct": "",
-                "structure_15m": structures.get("15m", ""),
-                "structure_1h": structures.get("1h", ""),
-                "structure_4h": structures.get("4h", ""),
-                "three_period_consistency": data.get("three_period_consistency", ""),
+                "after_1h_result": "",
+                "after_4h_result": "",
+                "after_24h_result": "",
             }
         )
     return rows
+
+
+def _judge_result(action: str, return_pct: float | None) -> str:
+    if return_pct is None:
+        return ""
+    if action == "ALLOW_LONG":
+        return "correct" if return_pct > 0 else "wrong"
+    if action == "ALLOW_SHORT":
+        return "correct" if return_pct < 0 else "wrong"
+    if action == "WAIT":
+        if abs(return_pct) < 1:
+            return "correct_wait"
+        if return_pct > 3 or return_pct < -3:
+            return "missed_opportunity"
+        return "neutral_wait"
+    return ""
 
 
 def update_signal_history(snapshot: dict[str, Any], decision: dict[str, Any], history_path: Path) -> list[dict[str, Any]]:
@@ -124,24 +256,24 @@ def update_signal_history(snapshot: dict[str, Any], decision: dict[str, Any], hi
     for row in rows:
         timestamp = parse_iso(row.get("timestamp", ""))
         symbol = row.get("symbol", "")
-        if not timestamp or symbol not in prices:
-            continue
-        try:
-            entry_price = float(row.get("price", ""))
-        except (TypeError, ValueError):
-            continue
-        if entry_price <= 0:
+        entry_price = _num(row.get("price"))
+        if not timestamp or symbol not in prices or entry_price is None or entry_price <= 0:
             continue
 
         elapsed_hours = (current_time - timestamp.astimezone(timezone.utc)).total_seconds() / 3600
-        current_price = prices[symbol]
-        raw_return = round_pct((current_price - entry_price) / entry_price * 100)
-        for field, hours in HORIZONS.items():
-            if row.get(field) in {"", None} and elapsed_hours >= hours:
+        raw_return = _round_pct((prices[symbol] - entry_price) / entry_price * 100)
+        action = row.get("action", "")
+        for field, hours in RETURN_HORIZONS.items():
+            result_field = field.replace("_return_pct", "_result")
+            existing_return = _num(row.get(field))
+            if existing_return is not None and row.get(result_field) in {"", None}:
+                row[result_field] = _judge_result(action, existing_return)
+            elif row.get(field) in {"", None} and elapsed_hours >= hours:
                 row[field] = raw_return
+                row[result_field] = _judge_result(action, raw_return)
 
     existing_keys = {(row.get("timestamp"), row.get("symbol")) for row in rows}
-    for new_row in _build_rows(decision):
+    for new_row in _build_rows(snapshot, decision):
         key = (new_row.get("timestamp"), new_row.get("symbol"))
         if key not in existing_keys:
             rows.append(new_row)
@@ -151,120 +283,75 @@ def update_signal_history(snapshot: dict[str, Any], decision: dict[str, Any], hi
     return rows
 
 
-def _float_values(rows: list[dict[str, Any]], field: str) -> list[float]:
-    values = []
-    for row in rows:
-        try:
-            value = row.get(field, "")
-            if value not in {"", None}:
-                values.append(float(value))
-        except (TypeError, ValueError):
-            continue
-    return values
-
-
-def _latest_available_return(row: dict[str, Any]) -> float | None:
-    for field in ["after_7d_return_pct", "after_72h_return_pct", "after_24h_return_pct", "after_4h_return_pct", "after_1h_return_pct"]:
-        value = row.get(field, "")
-        try:
-            if value not in {"", None}:
-                return float(value)
-        except (TypeError, ValueError):
-            continue
-    return None
-
-
-def _favorable_return(row: dict[str, Any]) -> float | None:
-    raw = _latest_available_return(row)
-    if raw is None:
-        return None
-    if row.get("action") == "LOOK_FOR_SHORT":
-        return -raw
-    return raw
-
-
-def _max_favorable(row: dict[str, Any]) -> float | None:
-    values = []
-    for field in HORIZONS:
-        try:
-            value = row.get(field, "")
-            if value not in {"", None}:
-                raw = float(value)
-                values.append(-raw if row.get("action") == "LOOK_FOR_SHORT" else raw)
-        except (TypeError, ValueError):
-            continue
-    if not values:
-        return None
-    return max(values)
-
-
-def _max_adverse(row: dict[str, Any]) -> float | None:
-    values = []
-    for field in HORIZONS:
-        try:
-            value = row.get(field, "")
-            if value not in {"", None}:
-                raw = float(value)
-                values.append(raw if row.get("action") == "LOOK_FOR_SHORT" else -raw)
-        except (TypeError, ValueError):
-            continue
-    if not values:
-        return None
-    return max(values)
+def _resolved_result(row: dict[str, Any]) -> str:
+    for field in ["after_24h_result", "after_4h_result", "after_1h_result"]:
+        result = row.get(field, "")
+        if result:
+            return result
+    return ""
 
 
 def _action_stats(rows: list[dict[str, Any]], action: str) -> dict[str, Any]:
     action_rows = [row for row in rows if row.get("action") == action]
-    if action in {"WAIT", "NO_TRADE"}:
-        return {"count": len(action_rows)}
+    results = [_resolved_result(row) for row in action_rows]
+    resolved = [result for result in results if result]
+    if action == "WAIT":
+        correct = [result for result in resolved if result == "correct_wait"]
+        return {
+            "count": len(action_rows),
+            "correct": len(correct),
+            "wrong": len([result for result in resolved if result == "missed_opportunity"]),
+            "resolved": len(resolved),
+            "accuracy": round(len(correct) / len(resolved) * 100, 2) if resolved else None,
+        }
 
-    favorable = [value for value in (_favorable_return(row) for row in action_rows) if value is not None]
-    max_favorable = [value for value in (_max_favorable(row) for row in action_rows) if value is not None]
-    max_adverse = [value for value in (_max_adverse(row) for row in action_rows) if value is not None]
-    wins = [value for value in favorable if value > 0]
+    correct = [result for result in resolved if result == "correct"]
     return {
         "count": len(action_rows),
-        "resolved_count": len(favorable),
-        "win_rate": round(len(wins) / len(favorable) * 100, 4) if favorable else None,
-        "average_favorable_return_pct": round(mean(favorable), 6) if favorable else None,
-        "max_favorable_return_pct": round(max(max_favorable), 6) if max_favorable else None,
-        "max_adverse_move_pct": round(max(max_adverse), 6) if max_adverse else None,
+        "correct": len(correct),
+        "wrong": len([result for result in resolved if result == "wrong"]),
+        "resolved": len(resolved),
+        "win_rate": round(len(correct) / len(resolved) * 100, 2) if resolved else None,
     }
 
 
-def _combo_stats(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        combo = f"{row.get('structure_15m')}/{row.get('structure_1h')}/{row.get('structure_4h')}|{row.get('three_period_consistency')}"
-        groups.setdefault(combo, []).append(row)
-    result = []
-    for combo, combo_rows in groups.items():
-        favorable = [value for value in (_favorable_return(row) for row in combo_rows if row.get("action") in {"LOOK_FOR_LONG", "LOOK_FOR_SHORT"}) if value is not None]
-        wins = [value for value in favorable if value > 0]
-        result.append(
-            {
-                "combo": combo,
-                "count": len(combo_rows),
-                "resolved_count": len(favorable),
-                "win_rate": round(len(wins) / len(favorable) * 100, 4) if favorable else None,
-                "average_favorable_return_pct": round(mean(favorable), 6) if favorable else None,
-            }
-        )
-    return sorted(result, key=lambda item: (item["resolved_count"], item["count"]), reverse=True)
+def _recent_10(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    resolved_rows = [row for row in rows if _resolved_result(row)]
+    recent = resolved_rows[-10:]
+    wins = 0
+    losses = 0
+    for row in recent:
+        result = _resolved_result(row)
+        if result in {"correct", "correct_wait"}:
+            wins += 1
+        elif result in {"wrong", "missed_opportunity"}:
+            losses += 1
+    total = wins + losses
+    return {
+        "count": len(recent),
+        "wins": wins,
+        "losses": losses,
+        "accuracy": round(wins / total * 100, 2) if total else None,
+    }
 
 
 def build_signal_statistics(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    total_signals = len(rows)
+    allow_long = _action_stats(rows, "ALLOW_LONG")
+    allow_short = _action_stats(rows, "ALLOW_SHORT")
+    wait = _action_stats(rows, "WAIT")
+    correct = int(allow_long["correct"]) + int(allow_short["correct"]) + int(wait["correct"])
+    wrong = int(allow_long["wrong"]) + int(allow_short["wrong"]) + int(wait["wrong"])
+    total_resolved = correct + wrong
     return {
-        "total_signals": total_signals,
-        "sample_size_note": "需要累计100次以上信号后再评估稳定优势" if total_signals < 100 else "样本数已达到100次以上，可开始评估稳定性",
-        "actions": {
-            "LOOK_FOR_LONG": _action_stats(rows, "LOOK_FOR_LONG"),
-            "LOOK_FOR_SHORT": _action_stats(rows, "LOOK_FOR_SHORT"),
-            "WAIT": _action_stats(rows, "WAIT"),
-            "NO_TRADE": _action_stats(rows, "NO_TRADE"),
-        },
-        "cycle_combo_stats": _combo_stats(rows),
+        "total_signals": len(rows),
+        "resolved_signals": total_resolved,
+        "correct": correct,
+        "wrong": wrong,
+        "overall_accuracy": round(correct / total_resolved * 100, 2) if total_resolved else None,
+        "allow_long": allow_long,
+        "allow_short": allow_short,
+        "wait": wait,
+        "recent_10": _recent_10(rows),
     }
 
 
