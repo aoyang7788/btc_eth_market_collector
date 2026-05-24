@@ -1,0 +1,15 @@
+[Unit]
+Description=BTC ETH Market Telegram Readonly Bot V6
+After=network-online.target market-collector.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/btc_eth_market_collector
+ExecStart=/opt/btc_eth_market_collector/.venv/bin/python telegram_bot.py
+Restart=on-failure
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

@@ -338,6 +338,160 @@ Telegram 只读查询也支持：
 
 注意：V5 仍然只是自动运行守护系统，不是交易系统；不接交易账户，不自动下单。
 
+## V6 云端 systemd 自动运行
+
+V6 新增两个 systemd 服务模板：
+
+- `deploy/systemd/market-collector.service`
+- `deploy/systemd/market-telegram.service`
+
+目标部署目录：
+
+```text
+/opt/btc_eth_market_collector
+```
+
+运行边界：
+
+- 不接交易所账户
+- 不下单
+- 不自动交易
+- 不修改 `/opt/arthur_tron_bot`
+- 不影响当前 TRON 机器人运行
+
+### .env 配置
+
+在 `/opt/btc_eth_market_collector/.env` 中配置：
+
+```env
+TELEGRAM_BOT_TOKEN=
+BINANCE_FUTURES_BASE_URL=https://fapi.binance.com
+COINGLASS_BASE_URL=https://open-api-v4.coinglass.com
+COINGLASS_API_KEY=
+OUTPUT_DIR=outputs
+RUN_INTERVAL_MINUTES=15
+REQUEST_TIMEOUT_SECONDS=10
+```
+
+如果 `TELEGRAM_BOT_TOKEN` 为空，`telegram_bot.py` 会明确提示缺失并退出，不会崩溃刷屏。
+
+### 云端手动验收命令
+
+```bash
+cd /opt/btc_eth_market_collector
+source .venv/bin/activate
+python3 main.py --once
+python3 main.py --health
+```
+
+### 安装 systemd 服务
+
+```bash
+cd /opt/btc_eth_market_collector
+sudo cp deploy/systemd/market-collector.service /etc/systemd/system/market-collector.service
+sudo cp deploy/systemd/market-telegram.service /etc/systemd/system/market-telegram.service
+sudo systemctl daemon-reload
+```
+
+### 启动 Collector 自动采集服务
+
+```bash
+sudo systemctl enable market-collector
+sudo systemctl start market-collector
+sudo systemctl status market-collector
+```
+
+Collector 服务执行：
+
+```bash
+/opt/btc_eth_market_collector/.venv/bin/python main.py --loop --interval 15
+```
+
+### 启动 Telegram 只读查询服务
+
+```bash
+sudo systemctl enable market-telegram
+sudo systemctl start market-telegram
+sudo systemctl status market-telegram
+```
+
+Telegram 服务执行：
+
+```bash
+/opt/btc_eth_market_collector/.venv/bin/python telegram_bot.py
+```
+
+### 查看运行日志
+
+Collector 应用日志：
+
+```bash
+tail -n 100 /opt/btc_eth_market_collector/logs/collector.log
+```
+
+Collector systemd 日志：
+
+```bash
+sudo journalctl -u market-collector -n 100 --no-pager
+```
+
+Telegram systemd 日志：
+
+```bash
+sudo journalctl -u market-telegram -n 100 --no-pager
+```
+
+实时查看日志：
+
+```bash
+sudo journalctl -u market-collector -f
+sudo journalctl -u market-telegram -f
+```
+
+### 查看健康状态
+
+```bash
+cd /opt/btc_eth_market_collector
+source .venv/bin/activate
+python3 main.py --health
+cat health/status.json
+```
+
+也可以在 Telegram 中输入：
+
+```text
+/health
+```
+
+### 确认每 15 分钟自动更新
+
+方式一：查看应用日志中是否持续出现 `ROUND_SUCCESS`：
+
+```bash
+tail -n 200 /opt/btc_eth_market_collector/logs/collector.log
+```
+
+方式二：查看输出文件修改时间：
+
+```bash
+ls -lh --time-style=long-iso /opt/btc_eth_market_collector/outputs/
+```
+
+方式三：查看健康状态中的 `last_success_at` 和 `next_run_at`：
+
+```bash
+cat /opt/btc_eth_market_collector/health/status.json
+```
+
+### 停止或重启服务
+
+```bash
+sudo systemctl restart market-collector
+sudo systemctl restart market-telegram
+sudo systemctl stop market-collector
+sudo systemctl stop market-telegram
+```
+
 ## V1 判断逻辑
 
 单周期结构：
