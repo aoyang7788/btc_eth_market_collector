@@ -1,0 +1,222 @@
+{
+  "generated_at": "2026-05-24T04:42:39.676280+00:00",
+  "symbols": {
+    "BTCUSDT": {
+      "source_status": {
+        "binance_klines": "ok",
+        "binance_funding": "ok",
+        "binance_oi": "ok",
+        "binance_long_short_ratio": "ok",
+        "coinglass_liquidation_map": "missing"
+      },
+      "price": {
+        "last": 76726.4,
+        "change_24h_pct": 1.645,
+        "high_24h": 77427.0,
+        "low_24h": 74203.6,
+        "volume_24h": 149102.195
+      },
+      "timeframes": {
+        "15m": {
+          "structure": "bearish",
+          "ema5": 76751.146258,
+          "ema13": 76762.142777,
+          "bollinger": {
+            "upper": 76920.038456,
+            "middle": 76774.765,
+            "lower": 76629.491544
+          },
+          "macd": {
+            "macd": 92.086233,
+            "signal": 134.552856,
+            "histogram": -42.466622
+          },
+          "volume_change": {
+            "current": 298.953,
+            "avg20": 670.5271,
+            "ratio": 0.445848
+          }
+        },
+        "1h": {
+          "structure": "bullish",
+          "ema5": 76723.271975,
+          "ema13": 76440.580801,
+          "bollinger": {
+            "upper": 77645.609103,
+            "middle": 75939.065,
+            "lower": 74232.520897
+          },
+          "macd": {
+            "macd": 276.744837,
+            "signal": 148.194523,
+            "histogram": 128.550314
+          },
+          "volume_change": {
+            "current": 1193.6,
+            "avg20": 5887.68555,
+            "ratio": 0.202728
+          }
+        },
+        "4h": {
+          "structure": "bullish",
+          "ema5": 76375.265813,
+          "ema13": 76301.849363,
+          "bollinger": {
+            "upper": 78675.911245,
+            "middle": 76631.25,
+            "lower": 74586.588755
+          },
+          "macd": {
+            "macd": -349.939683,
+            "signal": -445.590736,
+            "histogram": 95.651053
+          },
+          "volume_change": {
+            "current": 1193.6,
+            "avg20": 20371.08415,
+            "ratio": 0.058593
+          }
+        }
+      },
+      "daily_ma": {
+        "ma50": 76739.52,
+        "ma200": 80518.6885
+      },
+      "derivatives": {
+        "funding_rate": 9.477e-05,
+        "next_funding_time": "2026-05-24T08:00:00+00:00",
+        "open_interest": 102494.624,
+        "open_interest_change": -0.782765,
+        "long_short_ratio": 1.1906,
+        "liquidations": {
+          "long_liq_24h": "missing",
+          "short_liq_24h": "missing"
+        },
+        "liquidation_map": {
+          "status": "missing",
+          "source": "coinglass",
+          "reason": "COINGLASS_API_KEY not configured",
+          "key_zones": []
+        }
+      },
+      "decision": {
+        "is_bullish_environment": true,
+        "is_bearish_environment": false,
+        "allow_open": false,
+        "forbid_trade": true,
+        "reason": [
+          "missing liquidation map",
+          "timeframes conflict"
+        ]
+      }
+    },
+    "ETHUSDT": {
+      "source_status": {
+        "binance_klines": "ok",
+        "binance_funding": "ok",
+        "binance_oi": "ok",
+        "binance_long_short_ratio": "ok",
+        "coinglass_liquidation_map": "missing"
+      },
+      "price": {
+        "last": 2120.0,
+        "change_24h_pct": 2.665,
+        "high_24h": 2149.86,
+        "low_24h": 2007.0,
+        "volume_24h": 4698813.706
+      },
+      "timeframes": {
+        "15m": {
+          "structure": "bullish",
+          "ema5": 2120.110948,
+          "ema13": 2119.815222,
+          "bollinger": {
+            "upper": 2124.906203,
+            "middle": 2119.614,
+            "lower": 2114.321797
+          },
+          "macd": {
+            "macd": 4.470473,
+            "signal": 6.089297,
+            "histogram": -1.618824
+          },
+          "volume_change": {
+            "current": 5548.395,
+            "avg20": 17265.5242,
+            "ratio": 0.321357
+          }
+        },
+        "1h": {
+          "structure": "bullish",
+          "ema5": 2118.467672,
+          "ema13": 2105.174623,
+          "bollinger": {
+            "upper": 2158.797225,
+            "middle": 2082.4435,
+            "lower": 2006.089775
+          },
+          "macd": {
+            "macd": 13.401522,
+            "signal": 7.825355,
+            "histogram": 5.576167
+          },
+          "volume_change": {
+            "current": 31187.064,
+            "avg20": 186897.9667,
+            "ratio": 0.166867
+          }
+        },
+        "4h": {
+          "structure": "bullish",
+          "ema5": 2102.130473,
+          "ema13": 2095.040921,
+          "bollinger": {
+            "upper": 2176.538453,
+            "middle": 2102.9955,
+            "lower": 2029.452547
+          },
+          "macd": {
+            "macd": -12.363354,
+            "signal": -18.27383,
+            "histogram": 5.910476
+          },
+          "volume_change": {
+            "current": 31190.697,
+            "avg20": 599525.4556,
+            "ratio": 0.052026
+          }
+        }
+      },
+      "daily_ma": {
+        "ma50": 2263.6414,
+        "ma200": 2546.7277
+      },
+      "derivatives": {
+        "funding_rate": 7.905e-05,
+        "next_funding_time": "2026-05-24T08:00:00+00:00",
+        "open_interest": 2146525.315,
+        "open_interest_change": -0.042473,
+        "long_short_ratio": 2.2446,
+        "liquidations": {
+          "long_liq_24h": "missing",
+          "short_liq_24h": "missing"
+        },
+        "liquidation_map": {
+          "status": "missing",
+          "source": "coinglass",
+          "reason": "COINGLASS_API_KEY not configured",
+          "key_zones": []
+        }
+      },
+      "decision": {
+        "is_bullish_environment": true,
+        "is_bearish_environment": false,
+        "allow_open": false,
+        "forbid_trade": true,
+        "reason": [
+          "missing liquidation map"
+        ]
+      }
+    }
+  }
+}

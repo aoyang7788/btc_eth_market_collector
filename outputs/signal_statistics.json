@@ -1,0 +1,44 @@
+{
+  "total_signals": 6,
+  "sample_size_note": "需要累计100次以上信号后再评估稳定优势",
+  "actions": {
+    "LOOK_FOR_LONG": {
+      "count": 0,
+      "resolved_count": 0,
+      "win_rate": null,
+      "average_favorable_return_pct": null,
+      "max_favorable_return_pct": null,
+      "max_adverse_move_pct": null
+    },
+    "LOOK_FOR_SHORT": {
+      "count": 0,
+      "resolved_count": 0,
+      "win_rate": null,
+      "average_favorable_return_pct": null,
+      "max_favorable_return_pct": null,
+      "max_adverse_move_pct": null
+    },
+    "WAIT": {
+      "count": 6
+    },
+    "NO_TRADE": {
+      "count": 0
+    }
+  },
+  "cycle_combo_stats": [
+    {
+      "combo": "bearish/bullish/bullish|bullish_pullback",
+      "count": 3,
+      "resolved_count": 0,
+      "win_rate": null,
+      "average_favorable_return_pct": null
+    },
+    {
+      "combo": "bullish/bullish/bullish|bullish_aligned",
+      "count": 3,
+      "resolved_count": 0,
+      "win_rate": null,
+      "average_favorable_return_pct": null
+    }
+  ]
+}

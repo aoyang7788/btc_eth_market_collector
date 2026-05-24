@@ -1,0 +1,3 @@
+﻿timestamp,symbol,price,change_24h_pct,structure_15m,structure_1h,structure_4h,is_bullish_env,is_bearish_env,allow_open,forbid_trade,funding_rate,open_interest,oi_change,long_short_ratio,liquidation_map_status,reason
+2026-05-24T04:42:39.676280+00:00,BTCUSDT,76726.4,1.645,bearish,bullish,bullish,True,False,False,True,9.477e-05,102494.624,-0.782765,1.1906,missing,missing liquidation map; timeframes conflict
+2026-05-24T04:42:39.676280+00:00,ETHUSDT,2120.0,2.665,bullish,bullish,bullish,True,False,False,True,7.905e-05,2146525.315,-0.042473,2.2446,missing,missing liquidation map

@@ -1,0 +1,103 @@
+{
+  "generated_at": "2026-05-24T04:42:39.676280+00:00",
+  "source_snapshot": "market_snapshot.json",
+  "mode": "decision_only_no_order_execution",
+  "allowed_actions": [
+    "LOOK_FOR_LONG",
+    "LOOK_FOR_SHORT",
+    "NO_TRADE",
+    "WAIT"
+  ],
+  "symbols": {
+    "BTCUSDT": {
+      "symbol": "BTCUSDT",
+      "price": 76726.4,
+      "structures": {
+        "15m": "bearish",
+        "1h": "bullish",
+        "4h": "bullish"
+      },
+      "three_period_consistency": "bullish_pullback",
+      "allow_long": false,
+      "allow_short": false,
+      "allow_trade": false,
+      "risk_level": "MEDIUM",
+      "suggested_action": "WAIT",
+      "reason": [
+        "15m Bollinger position lower_half",
+        "15m MACD histogram negative",
+        "15m bearish",
+        "1h Bollinger position upper_half",
+        "1h MACD histogram positive",
+        "1h bullish",
+        "4h Bollinger position upper_half",
+        "4h MACD histogram positive",
+        "4h bullish",
+        "MA50 below MA200",
+        "funding positive",
+        "long short ratio balanced",
+        "oi falling",
+        "price below MA200",
+        "price below MA50",
+        "three timeframe consistency: bullish_pullback"
+      ],
+      "warnings": [],
+      "inputs_used": [
+        "EMA5",
+        "EMA13",
+        "MA50",
+        "MA200",
+        "MACD",
+        "Bollinger Bands",
+        "Open Interest",
+        "Funding Rate",
+        "Long/Short Ratio"
+      ]
+    },
+    "ETHUSDT": {
+      "symbol": "ETHUSDT",
+      "price": 2120.0,
+      "structures": {
+        "15m": "bullish",
+        "1h": "bullish",
+        "4h": "bullish"
+      },
+      "three_period_consistency": "bullish_aligned",
+      "allow_long": false,
+      "allow_short": false,
+      "allow_trade": false,
+      "risk_level": "LOW",
+      "suggested_action": "WAIT",
+      "reason": [
+        "15m Bollinger position upper_half",
+        "15m MACD histogram negative",
+        "15m bullish",
+        "1h Bollinger position upper_half",
+        "1h MACD histogram positive",
+        "1h bullish",
+        "4h Bollinger position upper_half",
+        "4h MACD histogram positive",
+        "4h bullish",
+        "MA50 below MA200",
+        "funding positive",
+        "long short ratio long biased",
+        "oi falling",
+        "price below MA200",
+        "price below MA50",
+        "three timeframe consistency: bullish_aligned"
+      ],
+      "warnings": [],
+      "inputs_used": [
+        "EMA5",
+        "EMA13",
+        "MA50",
+        "MA200",
+        "MACD",
+        "Bollinger Bands",
+        "Open Interest",
+        "Funding Rate",
+        "Long/Short Ratio"
+      ]
+    }
+  }
+}
