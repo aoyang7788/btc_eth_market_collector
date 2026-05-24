@@ -108,6 +108,52 @@ def _symbol_decision(decision: dict[str, Any] | None, symbol: str) -> dict[str, 
     return (decision or {}).get("symbols", {}).get(symbol)
 
 
+def _latest_plan(symbol: str) -> dict[str, Any]:
+    path = OUTPUT_DIR / "signal_history.csv"
+    try:
+        import csv
+
+        with path.open("r", newline="", encoding="utf-8-sig") as f:
+            rows = [row for row in csv.DictReader(f) if row.get("symbol") == symbol]
+        if rows:
+            return rows[-1]
+    except OSError:
+        pass
+    return {}
+
+
+def _fmt_price(value: Any) -> str:
+    try:
+        if value in {"", None}:
+            return "暂无"
+        number = float(value)
+        return f"{number:.2f}".rstrip("0").rstrip(".")
+    except (TypeError, ValueError):
+        return "暂无"
+
+
+def _plan_lines(symbol: str, current_price: Any, decision_item: dict[str, Any]) -> list[str]:
+    plan = _latest_plan(symbol)
+    stop_loss = _fmt_price(plan.get("stop_loss"))
+    take_profit = _fmt_price(plan.get("take_profit"))
+    rr = plan.get("risk_reward") or ""
+    rr_text = f"1:{rr}" if rr not in {"", None} else "暂无"
+    has_plan = stop_loss != "暂无" and take_profit != "暂无" and rr_text != "暂无"
+    lines = [
+        "交易计划：",
+        f"建议方向：{_cn_action(decision_item.get('suggested_action'))}",
+        f"参考入场：{_fmt_price(plan.get('entry_price') or current_price)}",
+        f"止损价：{stop_loss}",
+        f"止盈价：{take_profit}",
+        f"盈亏比：{rr_text}",
+        "单笔风险：1R",
+        f"允许执行：{'是' if decision_item.get('allow_trade') and has_plan else '否'}",
+    ]
+    if not has_plan:
+        lines.extend(["原因：当前结构不足，暂不生成完整交易计划。"])
+    return lines
+
+
 def build_market_summary() -> str:
     snapshot, decision = _load_reports()
     if not snapshot or not decision:
@@ -130,6 +176,7 @@ def build_market_summary() -> str:
                 f"建议：{_cn_action(dec.get('suggested_action'))}",
                 f"风险等级：{_cn_risk(dec.get('risk_level'))}",
                 f"允许交易：{'是' if dec.get('allow_trade') else '否'}",
+                *_plan_lines(symbol, snap.get('price', {}).get('last'), dec),
                 "",
             ]
         )
@@ -169,6 +216,8 @@ def build_symbol_detail(symbol: str) -> str:
             f"建议：{_cn_action(dec.get('suggested_action'))}",
             f"风险等级：{_cn_risk(dec.get('risk_level'))}",
             "",
+            *_plan_lines(symbol, price.get('last'), dec),
+            "",
             "原因：",
             reason_text,
         ]
@@ -180,6 +229,23 @@ def build_decision_summary() -> str:
     if not text:
         return MISSING_REPORT_TEXT
     text = translate_text(text)
+    snapshot, decision = _load_reports()
+    if snapshot and decision:
+        plan_lines = ["", "## 交易计划", ""]
+        for symbol in ["BTCUSDT", "ETHUSDT"]:
+            snap = _symbol_snapshot(snapshot, symbol)
+            dec = _symbol_decision(decision, symbol)
+            if not snap or not dec:
+                continue
+            plan_lines.extend(
+                [
+                    f"### {symbol}",
+                    "",
+                    *_plan_lines(symbol, snap.get("price", {}).get("last"), dec),
+                    "",
+                ]
+            )
+        text = text.rstrip() + "\n" + "\n".join(plan_lines).strip()
     max_len = 3500
     if len(text) <= max_len:
         return text

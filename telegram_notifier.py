@@ -157,6 +157,13 @@ def _fmt_price(value: Any) -> str:
     return f"{number:.2f}".rstrip("0").rstrip(".")
 
 
+def _fmt_plan_price(value: Any) -> str:
+    number = _num(value)
+    if number is None:
+        return "暂无"
+    return f"{number:.2f}".rstrip("0").rstrip(".")
+
+
 def _fmt_percent(value: Any) -> str:
     number = _num(value)
     if number is None:
@@ -433,6 +440,13 @@ def _symbol_block(symbol: str, snapshot: dict[str, Any], decision: dict[str, Any
     price = snapshot_item.get("price", {}).get("last")
     reasons = _reasons(snapshot_item, decision_item)
     plan = _latest_plan(symbol)
+    stop_loss = _fmt_plan_price(plan.get("stop_loss"))
+    take_profit = _fmt_plan_price(plan.get("take_profit"))
+    rr = plan.get("risk_reward") or ""
+    rr_text = f"1:{rr}" if rr not in {"", None} else "暂无"
+    has_plan = stop_loss != "暂无" and take_profit != "暂无" and rr_text != "暂无"
+    if not has_plan:
+        reasons.append("当前结构不足，暂不生成完整交易计划。")
 
     return [
         "━━━━━━━━━━━━━━",
@@ -479,14 +493,20 @@ def _symbol_block(symbol: str, snapshot: dict[str, Any], decision: dict[str, Any
         translate_value(decision_item.get("allow_trade")),
         "",
         "交易计划：",
-        "入场价：",
-        _fmt_price(plan.get("entry_price") or price),
+        "建议方向：",
+        _advice(decision_item),
+        "参考入场：",
+        _fmt_plan_price(plan.get("entry_price") or price),
         "止损价：",
-        _fmt_price(plan.get("stop_loss")),
+        stop_loss,
         "止盈价：",
-        _fmt_price(plan.get("take_profit")),
+        take_profit,
         "盈亏比：",
-        _fmt(plan.get("risk_reward")),
+        rr_text,
+        "单笔风险：",
+        "1R",
+        "允许执行：",
+        "是" if decision_item.get("allow_trade") and has_plan else "否",
         "",
         "辅助参考：",
         "EMA50：",
