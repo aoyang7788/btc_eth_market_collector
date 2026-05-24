@@ -45,6 +45,8 @@ def null_timeframe() -> dict[str, Any]:
         "structure": "missing",
         "ema5": None,
         "ema13": None,
+        "ema50": None,
+        "ema200": None,
         "bollinger": {"upper": None, "middle": None, "lower": None},
         "macd": {"macd": None, "signal": None, "histogram": None},
         "volume_change": {"current": None, "avg20": None, "ratio": None},

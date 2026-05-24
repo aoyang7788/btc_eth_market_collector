@@ -109,6 +109,8 @@ def timeframe_snapshot(klines: list[dict[str, float | int]] | None) -> dict[str,
         "structure": "missing",
         "ema5": None,
         "ema13": None,
+        "ema50": None,
+        "ema200": None,
         "bollinger": {"upper": None, "middle": None, "lower": None},
         "macd": {"macd": None, "signal": None, "histogram": None},
         "volume_change": {"current": None, "avg20": None, "ratio": None},
@@ -119,6 +121,8 @@ def timeframe_snapshot(klines: list[dict[str, float | int]] | None) -> dict[str,
     latest_close = closes[-1]
     ema5 = ema_latest(closes, 5)
     ema13 = ema_latest(closes, 13)
+    ema50 = ema_latest(closes, 50)
+    ema200 = ema_latest(closes, 200)
     if ema5 is None or ema13 is None:
         structure = "missing"
     elif ema5 > ema13 and latest_close > ema13:
@@ -131,6 +135,8 @@ def timeframe_snapshot(klines: list[dict[str, float | int]] | None) -> dict[str,
         "structure": structure,
         "ema5": round_value(ema5),
         "ema13": round_value(ema13),
+        "ema50": round_value(ema50),
+        "ema200": round_value(ema200),
         "bollinger": bollinger(closes),
         "macd": macd(closes),
         "volume_change": volume_change(klines),
