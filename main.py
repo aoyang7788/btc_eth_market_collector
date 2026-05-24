@@ -50,6 +50,8 @@ def null_timeframe() -> dict[str, Any]:
         "bollinger": {"upper": None, "middle": None, "lower": None},
         "macd": {"macd": None, "signal": None, "histogram": None},
         "volume_change": {"current": None, "avg20": None, "ratio": None},
+        "atr14": None,
+        "recent_range": {"high": None, "low": None},
     }
 
 

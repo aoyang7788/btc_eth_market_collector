@@ -104,6 +104,30 @@ def volume_change(klines: list[dict[str, float | int]]) -> dict[str, float | Non
     return {"current": round_value(current), "avg20": round_value(avg20), "ratio": round_value(ratio)}
 
 
+def atr_latest(klines: list[dict[str, float | int]], period: int = 14) -> float | None:
+    if len(klines) < period + 1:
+        return None
+    true_ranges = []
+    for i in range(1, len(klines)):
+        high = float(klines[i]["high"])
+        low = float(klines[i]["low"])
+        prev_close = float(klines[i - 1]["close"])
+        true_ranges.append(max(high - low, abs(high - prev_close), abs(low - prev_close)))
+    if len(true_ranges) < period:
+        return None
+    return mean(true_ranges[-period:])
+
+
+def recent_range(klines: list[dict[str, float | int]], period: int = 20) -> dict[str, float | None]:
+    if len(klines) < period:
+        return {"high": None, "low": None}
+    window = klines[-period:]
+    return {
+        "high": round_value(max(float(k["high"]) for k in window)),
+        "low": round_value(min(float(k["low"]) for k in window)),
+    }
+
+
 def timeframe_snapshot(klines: list[dict[str, float | int]] | None) -> dict[str, Any]:
     empty = {
         "structure": "missing",
@@ -114,6 +138,8 @@ def timeframe_snapshot(klines: list[dict[str, float | int]] | None) -> dict[str,
         "bollinger": {"upper": None, "middle": None, "lower": None},
         "macd": {"macd": None, "signal": None, "histogram": None},
         "volume_change": {"current": None, "avg20": None, "ratio": None},
+        "atr14": None,
+        "recent_range": {"high": None, "low": None},
     }
     if not klines or len(klines) < 35:
         return empty
@@ -140,6 +166,8 @@ def timeframe_snapshot(klines: list[dict[str, float | int]] | None) -> dict[str,
         "bollinger": bollinger(closes),
         "macd": macd(closes),
         "volume_change": volume_change(klines),
+        "atr14": round_value(atr_latest(klines)),
+        "recent_range": recent_range(klines),
     }
 
 

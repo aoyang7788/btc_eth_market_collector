@@ -56,6 +56,46 @@ def _fmt(value: Any) -> str:
     return str(value)
 
 
+def _cn_action(value: Any) -> str:
+    return {
+        "LOOK_FOR_LONG": "允许做多",
+        "LOOK_FOR_SHORT": "允许做空",
+        "ALLOW_LONG": "允许做多",
+        "ALLOW_SHORT": "允许做空",
+        "WAIT": "观望等待",
+        "NO_TRADE": "禁止交易",
+    }.get(str(value), _fmt(value))
+
+
+def _cn_risk(value: Any) -> str:
+    return {
+        "LOW": "低风险",
+        "MEDIUM": "中风险",
+        "HIGH": "高风险",
+    }.get(str(value), _fmt(value))
+
+
+def _cn_trend(value: Any) -> str:
+    return {
+        "bullish": "多头",
+        "bearish": "空头",
+        "neutral": "中性",
+        "missing": "缺失",
+    }.get(str(value), _fmt(value))
+
+
+def _cn_consistency(value: Any) -> str:
+    return {
+        "bullish_aligned": "多周期多头共振",
+        "bearish_aligned": "多周期空头共振",
+        "bullish_pullback": "多头趋势回踩",
+        "bearish_pullback": "空头趋势反抽",
+        "mixed_neutral": "多周期中性混合",
+        "conflict": "多周期冲突",
+        "missing": "缺失",
+    }.get(str(value), _fmt(value))
+
+
 def _load_reports() -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     snapshot = _read_json(OUTPUT_DIR / "market_snapshot.json")
     decision = _read_json(OUTPUT_DIR / "market_decision.json")
@@ -87,11 +127,11 @@ def build_market_summary() -> str:
             [
                 f"{symbol}",
                 f"价格：{_fmt(snap.get('price', {}).get('last'))}",
-                f"15m/1h/4h：{_fmt(tf.get('15m', {}).get('structure'))} / {_fmt(tf.get('1h', {}).get('structure'))} / {_fmt(tf.get('4h', {}).get('structure'))}",
-                f"一致性：{_fmt(dec.get('three_period_consistency'))}",
-                f"action：{_fmt(dec.get('suggested_action'))}",
-                f"risk_level：{_fmt(dec.get('risk_level'))}",
-                f"allow_trade：{_fmt(dec.get('allow_trade'))}",
+                f"15m/1h/4h：{_cn_trend(tf.get('15m', {}).get('structure'))} / {_cn_trend(tf.get('1h', {}).get('structure'))} / {_cn_trend(tf.get('4h', {}).get('structure'))}",
+                f"一致性：{_cn_consistency(dec.get('three_period_consistency'))}",
+                f"建议：{_cn_action(dec.get('suggested_action'))}",
+                f"风险等级：{_cn_risk(dec.get('risk_level'))}",
+                f"允许交易：{'是' if dec.get('allow_trade') else '否'}",
                 "",
             ]
         )
@@ -122,14 +162,14 @@ def build_symbol_detail(symbol: str) -> str:
             "",
             f"当前价格：{_fmt(price.get('last'))}",
             f"24h涨跌幅：{_fmt(price.get('change_24h_pct'))}%",
-            f"15m结构：{_fmt(tf.get('15m', {}).get('structure'))}",
-            f"1h结构：{_fmt(tf.get('1h', {}).get('structure'))}",
-            f"4h结构：{_fmt(tf.get('4h', {}).get('structure'))}",
+            f"15m结构：{_cn_trend(tf.get('15m', {}).get('structure'))}",
+            f"1h结构：{_cn_trend(tf.get('1h', {}).get('structure'))}",
+            f"4h结构：{_cn_trend(tf.get('4h', {}).get('structure'))}",
             f"资金费率：{_fmt(derivatives.get('funding_rate'))}",
             f"OI：{_fmt(derivatives.get('open_interest'))}",
             f"多空比：{_fmt(derivatives.get('long_short_ratio'))}",
-            f"action：{_fmt(dec.get('suggested_action'))}",
-            f"risk_level：{_fmt(dec.get('risk_level'))}",
+            f"建议：{_cn_action(dec.get('suggested_action'))}",
+            f"风险等级：{_cn_risk(dec.get('risk_level'))}",
             "",
             "reason[]：",
             reason_text,
@@ -141,6 +181,26 @@ def build_decision_summary() -> str:
     text = _read_text(OUTPUT_DIR / "market_decision.md")
     if not text:
         return MISSING_REPORT_TEXT
+    replacements = {
+        "ALLOW_LONG": "允许做多",
+        "ALLOW_SHORT": "允许做空",
+        "LOOK_FOR_LONG": "允许做多",
+        "LOOK_FOR_SHORT": "允许做空",
+        "WAIT": "观望等待",
+        "NO_TRADE": "禁止交易",
+        "LOW": "低风险",
+        "MEDIUM": "中风险",
+        "HIGH": "高风险",
+        "bullish_aligned": "多周期多头共振",
+        "bearish_aligned": "多周期空头共振",
+        "bullish": "多头",
+        "bearish": "空头",
+        "neutral": "中性",
+        "trade_allowed": "允许交易",
+        "trade_blocked": "禁止交易",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
     max_len = 3500
     if len(text) <= max_len:
         return text
@@ -171,13 +231,13 @@ def build_stats_text() -> str:
     if not stats:
         return "统计报告尚未生成，请先运行 python main.py --once"
 
-    allow_long = stats.get("allow_long", {})
-    allow_short = stats.get("allow_short", {})
-    wait = stats.get("wait", {})
     recent = stats.get("recent_10", {})
 
     def pct(value: Any) -> str:
-        return "pending" if value is None else f"{value}%"
+        return "等待样本" if value is None else f"{value}%"
+
+    def val(value: Any) -> str:
+        return "等待样本" if value is None else str(value)
 
     return "\n".join(
         [
@@ -185,11 +245,15 @@ def build_stats_text() -> str:
             "",
             f"总信号：{stats.get('total_signals', 0)}",
             "",
-            f"ALLOW_LONG：{pct(allow_long.get('win_rate'))}",
-            f"ALLOW_SHORT：{pct(allow_short.get('win_rate'))}",
-            f"WAIT：{pct(wait.get('accuracy'))}",
+            f"总交易：{stats.get('total_trades', 0)}",
+            f"胜率：{pct(stats.get('win_rate'))}",
+            f"平均盈亏比：{val(stats.get('average_rr'))}",
+            f"EV：{val(stats.get('ev'))}",
+            f"Profit Factor：{val(stats.get('profit_factor'))}",
+            f"最大连赢：{stats.get('max_win_streak', 0)}",
+            f"最大连亏：{stats.get('max_loss_streak', 0)}",
             "",
-            f"最近10次：{recent.get('wins', 0)}胜{recent.get('losses', 0)}负",
+            f"最近10次：{' '.join('止盈' if item == 'TP' else '止损' if item == 'SL' else item for item in recent.get('results', [])) or '暂无已完成交易'}",
         ]
     )
 

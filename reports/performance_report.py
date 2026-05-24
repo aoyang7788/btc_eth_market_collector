@@ -4,55 +4,43 @@ from pathlib import Path
 from typing import Any
 
 
+def _fmt(value: Any) -> str:
+    if value is None:
+        return "等待样本"
+    return str(value)
+
+
 def _fmt_pct(value: Any) -> str:
     if value is None:
-        return "pending"
+        return "等待样本"
     return f"{value}%"
 
 
 def write_performance_report(stats: dict[str, Any], path: Path) -> None:
-    allow_long = stats.get("allow_long", {})
-    allow_short = stats.get("allow_short", {})
-    wait = stats.get("wait", {})
     recent = stats.get("recent_10", {})
-
+    recent_text = " ".join("止盈" if item == "TP" else "止损" if item == "SL" else item for item in recent.get("results", [])) or "暂无已完成交易"
     lines = [
         "# 信号统计日报",
         "",
-        f"总信号：{stats.get('total_signals', 0)}",
+        f"总交易：{stats.get('total_trades', 0)}",
+        f"已完成：{stats.get('resolved_trades', 0)}",
         "",
-        f"已评估：{stats.get('resolved_signals', 0)}",
-        f"正确：{stats.get('correct', 0)}",
-        f"错误：{stats.get('wrong', 0)}",
-        f"总体准确率：{_fmt_pct(stats.get('overall_accuracy'))}",
+        f"止盈次数：{stats.get('tp_count', 0)}",
+        f"止损次数：{stats.get('sl_count', 0)}",
+        f"胜率：{_fmt_pct(stats.get('win_rate'))}",
+        f"平均盈亏比：{_fmt(stats.get('average_rr'))}",
+        f"EV：{_fmt(stats.get('ev'))}",
+        f"Profit Factor：{_fmt(stats.get('profit_factor'))}",
+        f"最大连赢：{stats.get('max_win_streak', 0)}",
+        f"最大连亏：{stats.get('max_loss_streak', 0)}",
         "",
-        f"ALLOW_LONG：{_fmt_pct(allow_long.get('win_rate'))}",
-        f"- 次数：{allow_long.get('count', 0)}",
-        f"- 已评估：{allow_long.get('resolved', 0)}",
-        f"- 正确：{allow_long.get('correct', 0)}",
-        f"- 错误：{allow_long.get('wrong', 0)}",
+        "最近10次：",
+        recent_text,
         "",
-        f"ALLOW_SHORT：{_fmt_pct(allow_short.get('win_rate'))}",
-        f"- 次数：{allow_short.get('count', 0)}",
-        f"- 已评估：{allow_short.get('resolved', 0)}",
-        f"- 正确：{allow_short.get('correct', 0)}",
-        f"- 错误：{allow_short.get('wrong', 0)}",
+        "## 统计说明",
         "",
-        f"WAIT：{_fmt_pct(wait.get('accuracy'))}",
-        f"- 次数：{wait.get('count', 0)}",
-        f"- 已评估：{wait.get('resolved', 0)}",
-        f"- 正确等待：{wait.get('correct', 0)}",
-        f"- 错失机会：{wait.get('wrong', 0)}",
-        "",
-        f"最近10次：{_fmt_pct(recent.get('accuracy'))}",
-        f"- {recent.get('wins', 0)}胜{recent.get('losses', 0)}负",
-        "",
-        "## 判定规则",
-        "",
-        "- ALLOW_LONG：记录后价格上涨为正确，下跌为错误。",
-        "- ALLOW_SHORT：记录后价格下跌为正确，上涨为错误。",
-        "- WAIT：价格波动小于 ±1% 为正确等待；上涨超过3%或下跌超过3%为错失机会；其余为中性等待。",
-        "- 统计以已到期的 1h / 4h / 24h 结果为准，优先使用 24h，其次 4h，再其次 1h。",
+        "- 只统计建议为“允许做多 / 允许做空”且具备 TP/SL 的信号。",
+        "- TP/SL 通过后续 1小时、4小时、24小时快照价格观察触发。",
+        "- 当前版本不接交易账户，不自动交易，只做记录与复盘。",
     ]
-
     path.write_text("\n".join(lines), encoding="utf-8-sig")

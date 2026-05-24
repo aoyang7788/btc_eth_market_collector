@@ -44,12 +44,46 @@ def _mask_token(token: str) -> str:
     return f"{token[:6]}****{token[-4:]}"
 
 
+def _num(value: Any) -> float | None:
+    try:
+        if value in {"", None}:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _fmt(value: Any) -> str:
-    if value is None:
-        return "missing"
+    if value is None or value == "":
+        return "缺失"
     if isinstance(value, bool):
-        return "true" if value else "false"
+        return "是" if value else "否"
     return str(value)
+
+
+def _fmt_price(value: Any) -> str:
+    number = _num(value)
+    if number is None:
+        return "缺失"
+    return f"{number:.2f}".rstrip("0").rstrip(".")
+
+
+def _fmt_percent(value: Any) -> str:
+    number = _num(value)
+    if number is None:
+        return "缺失"
+    return f"{number * 100:.4f}".rstrip("0").rstrip(".") + "%"
+
+
+def _fmt_large(value: Any) -> str:
+    number = _num(value)
+    if number is None:
+        return "缺失"
+    if abs(number) >= 100000000:
+        return f"{number / 100000000:.2f}亿"
+    if abs(number) >= 10000:
+        return f"{number / 10000:.2f}万"
+    return f"{number:.2f}".rstrip("0").rstrip(".")
 
 
 def load_decision(decision_path: Path | None = None) -> dict[str, Any] | None:
@@ -68,182 +102,215 @@ def load_snapshot(snapshot_path: Path | None = None) -> dict[str, Any] | None:
         return None
 
 
-def _direction_label(value: Any) -> str:
-    mapping = {
+def _direction(value: Any) -> str:
+    return {
         "bullish": "多头",
         "bearish": "空头",
         "neutral": "中性",
-        "missing": "missing",
-    }
-    return mapping.get(str(value), _fmt(value))
+        "missing": "缺失",
+    }.get(str(value), _fmt(value))
 
 
-def _macd_state(macd: dict[str, Any]) -> str:
-    hist = macd.get("histogram")
-    try:
-        hist_value = float(hist)
-    except (TypeError, ValueError):
-        return "missing"
-    if hist_value > 0:
-        return f"偏多 histogram={hist_value}"
-    if hist_value < 0:
-        return f"偏空 histogram={hist_value}"
-    return "中性 histogram=0"
+def _risk(value: Any) -> str:
+    return {
+        "LOW": "低风险",
+        "MEDIUM": "中风险",
+        "HIGH": "高风险",
+    }.get(str(value), _fmt(value))
 
 
-def _bollinger_position(price: Any, bollinger: dict[str, Any]) -> str:
-    try:
-        value = float(price)
-        upper = float(bollinger.get("upper"))
-        middle = float(bollinger.get("middle"))
-        lower = float(bollinger.get("lower"))
-    except (TypeError, ValueError):
-        return "missing"
+def _consistency(value: Any) -> str:
+    return {
+        "bullish_aligned": "多周期多头共振",
+        "bearish_aligned": "多周期空头共振",
+        "bullish_pullback": "多头趋势回踩",
+        "bearish_pullback": "空头趋势反抽",
+        "mixed_neutral": "多周期中性混合",
+        "conflict": "多周期冲突",
+        "missing": "缺失",
+    }.get(str(value), _fmt(value))
+
+
+def _macd(macd: dict[str, Any]) -> str:
+    macd_line = _num(macd.get("macd"))
+    signal = _num(macd.get("signal"))
+    hist = _num(macd.get("histogram"))
+    if macd_line is None or signal is None:
+        return "缺失"
+    if macd_line > signal and (hist or 0) >= 0:
+        return "金叉"
+    if macd_line < signal and (hist or 0) <= 0:
+        return "死叉"
+    return "中性"
+
+
+def _bollinger(price: Any, bollinger: dict[str, Any]) -> str:
+    value = _num(price)
+    upper = _num(bollinger.get("upper"))
+    middle = _num(bollinger.get("middle"))
+    lower = _num(bollinger.get("lower"))
+    if value is None or upper is None or middle is None or lower is None:
+        return "缺失"
     if value > upper:
         return "上轨上方"
     if value < lower:
         return "下轨下方"
     if value >= middle:
-        return "中轨至上轨"
-    return "下轨至中轨"
+        return "中轨上方"
+    return "中轨下方"
 
 
 def _advice(decision_item: dict[str, Any]) -> str:
     if decision_item.get("allow_long"):
-        return "ALLOW_LONG"
+        return "允许做多"
     if decision_item.get("allow_short"):
-        return "ALLOW_SHORT"
-    return "WAIT"
+        return "允许做空"
+    return "观望等待"
 
 
 def _score(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> int:
     score = 50
+    advice = _advice(decision_item)
     consistency = decision_item.get("three_period_consistency")
     risk = decision_item.get("risk_level")
     structures = decision_item.get("structures", {})
-    action = _advice(decision_item)
     tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
-    macd_hist = tf4h.get("macd", {}).get("histogram")
-    price = snapshot_item.get("price", {}).get("last")
-    ema50 = tf4h.get("ema50")
-    ema200 = tf4h.get("ema200")
+    price = _num(snapshot_item.get("price", {}).get("last"))
+    ema50 = _num(tf4h.get("ema50"))
+    ema200 = _num(tf4h.get("ema200"))
+    hist = _num(tf4h.get("macd", {}).get("histogram"))
 
-    if decision_item.get("allow_trade"):
+    if advice in {"允许做多", "允许做空"}:
         score += 20
     else:
-        score -= 10
-
+        score -= 5
     if consistency in {"bullish_aligned", "bearish_aligned"}:
         score += 15
     elif consistency in {"bullish_pullback", "bearish_pullback"}:
         score += 10
     elif consistency == "conflict":
         score -= 25
-
     if structures.get("4h") == structures.get("1h") and structures.get("4h") in {"bullish", "bearish"}:
         score += 10
     if structures.get("15m") == structures.get("4h") and structures.get("15m") in {"bullish", "bearish"}:
         score += 5
-
-    try:
-        hist = float(macd_hist)
-        if (action == "ALLOW_LONG" and hist > 0) or (action == "ALLOW_SHORT" and hist < 0):
-            score += 5
-        elif action != "WAIT":
-            score -= 5
-    except (TypeError, ValueError):
+    if hist is None:
         score -= 5
-
-    try:
-        price_value = float(price)
-        ema50_value = float(ema50)
-        ema200_value = float(ema200)
-        if action == "ALLOW_LONG" and price_value >= ema50_value >= ema200_value:
-            score += 5
-        elif action == "ALLOW_SHORT" and price_value <= ema50_value <= ema200_value:
-            score += 5
-    except (TypeError, ValueError):
+    elif (advice == "允许做多" and hist > 0) or (advice == "允许做空" and hist < 0):
+        score += 5
+    if price is None or ema50 is None or ema200 is None:
         score -= 5
-
+    elif advice == "允许做多" and price >= ema50 >= ema200:
+        score += 5
+    elif advice == "允许做空" and price <= ema50 <= ema200:
+        score += 5
     if risk == "LOW":
         score += 10
-    elif risk == "MEDIUM":
-        score += 0
     elif risk == "HIGH":
         score -= 20
-
     return max(0, min(100, score))
 
 
-def _why_text(decision_item: dict[str, Any]) -> tuple[str, str]:
-    reasons = decision_item.get("reason", [])
-    warnings = decision_item.get("warnings", [])
-    if decision_item.get("allow_trade"):
-        allowed = [
-            f"建议动作={_advice(decision_item)}",
-            f"三周期一致性={_fmt(decision_item.get('three_period_consistency'))}",
-            f"风险等级={_fmt(decision_item.get('risk_level'))}",
-        ]
-        blocked = "无硬性禁止原因。"
-        return "\n".join(f"- {item}" for item in allowed), blocked
-
-    blocked_items = warnings[:]
-    if not blocked_items:
-        blocked_items = [
-            f"建议动作为 {_advice(decision_item)}",
-            f"三周期一致性={_fmt(decision_item.get('three_period_consistency'))}",
-        ]
-    if reasons:
-        blocked_items.extend(reasons[:4])
-    allowed = "无，当前未满足交易条件。"
-    blocked = "\n".join(f"- {item}" for item in blocked_items[:8])
-    return allowed, blocked
+def _reasons(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> list[str]:
+    reasons = []
+    tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
+    derivatives = snapshot_item.get("derivatives", {})
+    ema5 = _num(tf4h.get("ema5"))
+    ema13 = _num(tf4h.get("ema13"))
+    ema50 = _num(tf4h.get("ema50"))
+    ema200 = _num(tf4h.get("ema200"))
+    oi_change = _num(derivatives.get("open_interest_change"))
+    if ema5 is not None and ema13 is not None and ema50 is not None:
+        if ema5 > ema13 > ema50:
+            reasons.append("① EMA多头排列")
+        elif ema5 < ema13 < ema50:
+            reasons.append("① EMA空头排列")
+    if _macd(tf4h.get("macd", {})) == "金叉":
+        reasons.append("② MACD金叉")
+    elif _macd(tf4h.get("macd", {})) == "死叉":
+        reasons.append("② MACD死叉")
+    if decision_item.get("three_period_consistency") in {"bullish_aligned", "bearish_aligned"}:
+        reasons.append("③ 多周期共振")
+    if oi_change is not None and oi_change > 0:
+        reasons.append("④ OI持续增长")
+    elif oi_change is not None and oi_change < 0:
+        reasons.append("④ OI回落")
+    if not reasons:
+        reasons.append("① 当前信号条件未形成明显优势")
+    return reasons
 
 
 def _symbol_block(symbol: str, snapshot: dict[str, Any], decision: dict[str, Any]) -> list[str]:
     snapshot_item = snapshot.get("symbols", {}).get(symbol, {})
     decision_item = decision.get("symbols", {}).get(symbol, {})
-    price = snapshot_item.get("price", {}).get("last")
+    tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
     derivatives = snapshot_item.get("derivatives", {})
-    tf = snapshot_item.get("timeframes", {})
-    tf4h = tf.get("4h", {})
     structures = decision_item.get("structures", {})
-    bollinger_position = _bollinger_position(price, tf4h.get("bollinger", {}))
-    allowed_text, blocked_text = _why_text(decision_item)
-    score = _score(snapshot_item, decision_item)
+    price = snapshot_item.get("price", {}).get("last")
+    reasons = _reasons(snapshot_item, decision_item)
 
     return [
-        "------------------------------",
+        "━━━━━━━━━━━━━━",
+        "",
         symbol,
         "",
-        f"当前价格：{_fmt(price)}",
+        "当前价格：",
+        _fmt_price(price),
         "",
-        "EMA（4h）",
-        f"EMA5：{_fmt(tf4h.get('ema5'))}",
-        f"EMA13：{_fmt(tf4h.get('ema13'))}",
-        f"EMA50：{_fmt(tf4h.get('ema50'))}",
-        f"EMA200：{_fmt(tf4h.get('ema200'))}",
+        "EMA5：",
+        _fmt_price(tf4h.get("ema5")),
         "",
-        f"MACD状态：{_macd_state(tf4h.get('macd', {}))}",
-        f"布林带位置：{bollinger_position}",
+        "EMA13：",
+        _fmt_price(tf4h.get("ema13")),
         "",
-        f"资金费率：{_fmt(derivatives.get('funding_rate'))}",
-        f"多空比：{_fmt(derivatives.get('long_short_ratio'))}",
-        f"持仓量(OI)：{_fmt(derivatives.get('open_interest'))}",
+        "EMA50：",
+        _fmt_price(tf4h.get("ema50")),
         "",
-        f"15分钟方向：{_direction_label(structures.get('15m'))}",
-        f"1小时方向：{_direction_label(structures.get('1h'))}",
-        f"4小时方向：{_direction_label(structures.get('4h'))}",
+        "EMA200：",
+        _fmt_price(tf4h.get("ema200")),
         "",
-        f"综合评分：{score}/100",
-        f"建议：{_advice(decision_item)}",
-        f"风险等级：{_fmt(decision_item.get('risk_level'))}",
+        "MACD：",
+        _macd(tf4h.get("macd", {})),
         "",
-        "为什么允许交易：",
-        allowed_text,
+        "布林带：",
+        _bollinger(price, tf4h.get("bollinger", {})),
         "",
-        "为什么不允许交易：",
-        blocked_text,
+        "资金费率：",
+        _fmt_percent(derivatives.get("funding_rate")),
+        "",
+        "多空比：",
+        _fmt(derivatives.get("long_short_ratio")),
+        "",
+        "持仓量：",
+        _fmt_large(derivatives.get("open_interest")),
+        "",
+        "15分钟：",
+        _direction(structures.get("15m")),
+        "",
+        "1小时：",
+        _direction(structures.get("1h")),
+        "",
+        "4小时：",
+        _direction(structures.get("4h")),
+        "",
+        "多周期结构：",
+        _consistency(decision_item.get("three_period_consistency")),
+        "",
+        "综合评分：",
+        f"{_score(snapshot_item, decision_item)}分",
+        "",
+        "风险等级：",
+        _risk(decision_item.get("risk_level")),
+        "",
+        "建议：",
+        _advice(decision_item),
+        "",
+        "允许交易：",
+        "是" if decision_item.get("allow_trade") else "否",
+        "",
+        "原因：",
+        "",
+        *reasons,
         "",
     ]
 
@@ -256,7 +323,7 @@ def build_telegram_message(decision: dict[str, Any] | None = None, snapshot: dic
     if not snapshot_data:
         return "BTC/ETH 市场分析完成，但 market_snapshot.json 暂不可读。"
 
-    lines = ["BTC/ETH 三周期市场分析", f"时间：{_fmt(data.get('generated_at'))}", ""]
+    lines = ["📊 BTC/ETH市场分析完成", "", "时间：", _fmt(data.get("generated_at")), ""]
     for symbol in ["BTCUSDT", "ETHUSDT"]:
         lines.extend(_symbol_block(symbol, snapshot_data, data))
     return "\n".join(lines).strip()
@@ -273,17 +340,15 @@ def send_telegram_message(text: str) -> dict[str, Any]:
         logger.warning("TELEGRAM_SKIP missing TELEGRAM_CHAT_ID token=%s", _mask_token(token))
         return {"ok": False, "error": "missing TELEGRAM_CHAT_ID"}
 
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         response = requests.post(
-            url,
+            f"https://api.telegram.org/bot{token}/sendMessage",
             json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         payload = response.json()
-        ok = bool(payload.get("ok"))
-        if ok:
+        if payload.get("ok"):
             logger.info("TELEGRAM_SENT chat_id=%s token=%s", chat_id, _mask_token(token))
             return {"ok": True, "data": payload}
         logger.warning("TELEGRAM_FAILED chat_id=%s error=%s", chat_id, payload.get("description", "unknown"))
@@ -297,8 +362,7 @@ def send_telegram_message(text: str) -> dict[str, Any]:
 
 
 def send_analysis_update() -> dict[str, Any]:
-    message = build_telegram_message()
-    return send_telegram_message(message)
+    return send_telegram_message(build_telegram_message())
 
 
 def send_test_message() -> dict[str, Any]:

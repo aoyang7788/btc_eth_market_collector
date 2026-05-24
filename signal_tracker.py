@@ -8,44 +8,35 @@ from statistics import mean
 from typing import Any
 
 
-RETURN_HORIZONS = {
-    "after_1h_return_pct": 1,
-    "after_4h_return_pct": 4,
-    "after_24h_return_pct": 24,
-}
-
-RESULT_FIELDS = [
-    "after_1h_result",
-    "after_4h_result",
-    "after_24h_result",
-]
-
 FIELDS = [
     "timestamp",
     "symbol",
-    "price",
+    "entry_price",
+    "action",
     "score",
     "risk_level",
-    "action",
-    "trend_15m",
-    "trend_1h",
-    "trend_4h",
-    "funding_rate",
-    "long_short_ratio",
-    "oi",
     "ema5",
     "ema13",
     "ema50",
     "ema200",
-    "macd_state",
-    "bb_position",
-    "after_1h_return_pct",
-    "after_4h_return_pct",
-    "after_24h_return_pct",
-    "after_1h_result",
-    "after_4h_result",
-    "after_24h_result",
+    "macd",
+    "bollinger",
+    "funding_rate",
+    "long_short_ratio",
+    "oi",
+    "stop_loss",
+    "take_profit",
+    "risk_reward",
+    "result",
+    "result_at",
+    "result_horizon",
 ]
+
+HORIZONS = {
+    "1h": 1,
+    "4h": 4,
+    "24h": 24,
+}
 
 
 def parse_iso(value: str) -> datetime | None:
@@ -53,10 +44,6 @@ def parse_iso(value: str) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (TypeError, ValueError):
         return None
-
-
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _num(value: Any) -> float | None:
@@ -68,65 +55,40 @@ def _num(value: Any) -> float | None:
         return None
 
 
-def _fmt_num(value: Any) -> Any:
+def _round(value: Any, digits: int = 8) -> Any:
     number = _num(value)
     if number is None:
         return ""
-    return round(number, 8)
-
-
-def _round_pct(value: float | None) -> float | None:
-    if value is None:
-        return None
-    return round(value, 6)
-
-
-def read_history(path: Path) -> list[dict[str, str]]:
-    if not path.exists():
-        return []
-    with path.open("r", newline="", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        rows = []
-        for row in reader:
-            rows.append({field: row.get(field, "") for field in FIELDS})
-        return rows
-
-
-def write_history(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDS)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({field: row.get(field, "") for field in FIELDS})
-
-
-def _price_map(snapshot: dict[str, Any]) -> dict[str, float]:
-    result = {}
-    for symbol, data in snapshot.get("symbols", {}).items():
-        price = _num(data.get("price", {}).get("last"))
-        if price is not None:
-            result[symbol] = price
-    return result
+    return round(number, digits)
 
 
 def _action(decision_item: dict[str, Any]) -> str:
     if decision_item.get("allow_long"):
-        return "ALLOW_LONG"
+        return "允许做多"
     if decision_item.get("allow_short"):
-        return "ALLOW_SHORT"
-    return "WAIT"
+        return "允许做空"
+    return "观望等待"
+
+
+def _risk(value: Any) -> str:
+    return {
+        "LOW": "低风险",
+        "MEDIUM": "中风险",
+        "HIGH": "高风险",
+    }.get(str(value), str(value or ""))
 
 
 def _macd_state(macd: dict[str, Any]) -> str:
+    macd_line = _num(macd.get("macd"))
+    signal = _num(macd.get("signal"))
     hist = _num(macd.get("histogram"))
-    if hist is None:
-        return "missing"
-    if hist > 0:
-        return "bullish"
-    if hist < 0:
-        return "bearish"
-    return "neutral"
+    if macd_line is None or signal is None:
+        return "缺失"
+    if macd_line > signal and (hist or 0) >= 0:
+        return "金叉"
+    if macd_line < signal and (hist or 0) <= 0:
+        return "死叉"
+    return "中性"
 
 
 def _bb_position(price: Any, bollinger: dict[str, Any]) -> str:
@@ -135,14 +97,14 @@ def _bb_position(price: Any, bollinger: dict[str, Any]) -> str:
     middle = _num(bollinger.get("middle"))
     lower = _num(bollinger.get("lower"))
     if value is None or upper is None or middle is None or lower is None:
-        return "missing"
+        return "缺失"
     if value > upper:
-        return "above_upper"
+        return "上轨上方"
     if value < lower:
-        return "below_lower"
+        return "下轨下方"
     if value >= middle:
-        return "upper_half"
-    return "lower_half"
+        return "中轨上方"
+    return "中轨下方"
 
 
 def _score(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> int:
@@ -157,7 +119,7 @@ def _score(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> int:
     ema200 = _num(tf4h.get("ema200"))
     macd_hist = _num(tf4h.get("macd", {}).get("histogram"))
 
-    if action in {"ALLOW_LONG", "ALLOW_SHORT"}:
+    if action in {"允许做多", "允许做空"}:
         score += 20
     else:
         score -= 5
@@ -175,14 +137,14 @@ def _score(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> int:
 
     if macd_hist is None:
         score -= 5
-    elif (action == "ALLOW_LONG" and macd_hist > 0) or (action == "ALLOW_SHORT" and macd_hist < 0):
+    elif (action == "允许做多" and macd_hist > 0) or (action == "允许做空" and macd_hist < 0):
         score += 5
 
     if price is None or ema50 is None or ema200 is None:
         score -= 5
-    elif action == "ALLOW_LONG" and price >= ema50 >= ema200:
+    elif action == "允许做多" and price >= ema50 >= ema200:
         score += 5
-    elif action == "ALLOW_SHORT" and price <= ema50 <= ema200:
+    elif action == "允许做空" and price <= ema50 <= ema200:
         score += 5
 
     if risk == "LOW":
@@ -192,85 +154,152 @@ def _score(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> int:
     return max(0, min(100, score))
 
 
+def _trade_plan(action: str, entry: float | None, tf15: dict[str, Any]) -> dict[str, Any]:
+    if entry is None or action not in {"允许做多", "允许做空"}:
+        return {"stop_loss": "", "take_profit": "", "risk_reward": ""}
+
+    atr = _num(tf15.get("atr14"))
+    range_data = tf15.get("recent_range", {})
+    recent_low = _num(range_data.get("low"))
+    recent_high = _num(range_data.get("high"))
+    atr_distance = atr * 1.5 if atr is not None else None
+
+    if action == "允许做多":
+        candidates = []
+        if recent_low is not None and recent_low < entry:
+            candidates.append(recent_low)
+        if atr_distance is not None:
+            candidates.append(entry - atr_distance)
+        if not candidates:
+            return {"stop_loss": "", "take_profit": "", "risk_reward": ""}
+        stop = max(candidates)
+        risk = entry - stop
+        take_profit = entry + risk * 2.5
+    else:
+        candidates = []
+        if recent_high is not None and recent_high > entry:
+            candidates.append(recent_high)
+        if atr_distance is not None:
+            candidates.append(entry + atr_distance)
+        if not candidates:
+            return {"stop_loss": "", "take_profit": "", "risk_reward": ""}
+        stop = min(candidates)
+        risk = stop - entry
+        take_profit = entry - risk * 2.5
+
+    if risk <= 0:
+        return {"stop_loss": "", "take_profit": "", "risk_reward": ""}
+    return {
+        "stop_loss": round(stop, 8),
+        "take_profit": round(take_profit, 8),
+        "risk_reward": 2.5,
+    }
+
+
+def read_history(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    with path.open("r", newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        return [{field: row.get(field, "") for field in FIELDS} for row in reader]
+
+
+def write_history(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=FIELDS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in FIELDS})
+
+
 def _build_rows(snapshot: dict[str, Any], decision: dict[str, Any]) -> list[dict[str, Any]]:
-    timestamp = decision.get("generated_at", "")
     rows = []
+    timestamp = decision.get("generated_at", "")
     for symbol, decision_item in decision.get("symbols", {}).items():
         snapshot_item = snapshot.get("symbols", {}).get(symbol, {})
+        tf15 = snapshot_item.get("timeframes", {}).get("15m", {})
         tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
         derivatives = snapshot_item.get("derivatives", {})
-        structures = decision_item.get("structures", {})
-        price = snapshot_item.get("price", {}).get("last")
+        entry = _num(snapshot_item.get("price", {}).get("last"))
+        action = _action(decision_item)
+        plan = _trade_plan(action, entry, tf15)
         rows.append(
             {
                 "timestamp": timestamp,
                 "symbol": symbol,
-                "price": _fmt_num(price),
+                "entry_price": _round(entry),
+                "action": action,
                 "score": _score(snapshot_item, decision_item),
-                "risk_level": decision_item.get("risk_level", ""),
-                "action": _action(decision_item),
-                "trend_15m": structures.get("15m", ""),
-                "trend_1h": structures.get("1h", ""),
-                "trend_4h": structures.get("4h", ""),
-                "funding_rate": _fmt_num(derivatives.get("funding_rate")),
-                "long_short_ratio": _fmt_num(derivatives.get("long_short_ratio")),
-                "oi": _fmt_num(derivatives.get("open_interest")),
-                "ema5": _fmt_num(tf4h.get("ema5")),
-                "ema13": _fmt_num(tf4h.get("ema13")),
-                "ema50": _fmt_num(tf4h.get("ema50")),
-                "ema200": _fmt_num(tf4h.get("ema200")),
-                "macd_state": _macd_state(tf4h.get("macd", {})),
-                "bb_position": _bb_position(price, tf4h.get("bollinger", {})),
-                "after_1h_return_pct": "",
-                "after_4h_return_pct": "",
-                "after_24h_return_pct": "",
-                "after_1h_result": "",
-                "after_4h_result": "",
-                "after_24h_result": "",
+                "risk_level": _risk(decision_item.get("risk_level")),
+                "ema5": _round(tf4h.get("ema5")),
+                "ema13": _round(tf4h.get("ema13")),
+                "ema50": _round(tf4h.get("ema50")),
+                "ema200": _round(tf4h.get("ema200")),
+                "macd": _macd_state(tf4h.get("macd", {})),
+                "bollinger": _bb_position(entry, tf4h.get("bollinger", {})),
+                "funding_rate": _round(derivatives.get("funding_rate")),
+                "long_short_ratio": _round(derivatives.get("long_short_ratio")),
+                "oi": _round(derivatives.get("open_interest")),
+                "stop_loss": plan["stop_loss"],
+                "take_profit": plan["take_profit"],
+                "risk_reward": plan["risk_reward"],
+                "result": "",
+                "result_at": "",
+                "result_horizon": "",
             }
         )
     return rows
 
 
-def _judge_result(action: str, return_pct: float | None) -> str:
-    if return_pct is None:
+def _price_map(snapshot: dict[str, Any]) -> dict[str, float]:
+    result = {}
+    for symbol, data in snapshot.get("symbols", {}).items():
+        price = _num(data.get("price", {}).get("last"))
+        if price is not None:
+            result[symbol] = price
+    return result
+
+
+def _check_result(row: dict[str, Any], price: float) -> str:
+    action = row.get("action", "")
+    stop = _num(row.get("stop_loss"))
+    take = _num(row.get("take_profit"))
+    if stop is None or take is None:
         return ""
-    if action == "ALLOW_LONG":
-        return "correct" if return_pct > 0 else "wrong"
-    if action == "ALLOW_SHORT":
-        return "correct" if return_pct < 0 else "wrong"
-    if action == "WAIT":
-        if abs(return_pct) < 1:
-            return "correct_wait"
-        if return_pct > 3 or return_pct < -3:
-            return "missed_opportunity"
-        return "neutral_wait"
+    if action == "允许做多":
+        if price >= take:
+            return "TP"
+        if price <= stop:
+            return "SL"
+    if action == "允许做空":
+        if price <= take:
+            return "TP"
+        if price >= stop:
+            return "SL"
     return ""
 
 
 def update_signal_history(snapshot: dict[str, Any], decision: dict[str, Any], history_path: Path) -> list[dict[str, Any]]:
     rows = read_history(history_path)
     prices = _price_map(snapshot)
-    current_time = parse_iso(snapshot.get("generated_at", "")) or now_utc()
+    current_time = parse_iso(snapshot.get("generated_at", "")) or datetime.now(timezone.utc)
 
     for row in rows:
+        if row.get("result"):
+            continue
         timestamp = parse_iso(row.get("timestamp", ""))
         symbol = row.get("symbol", "")
-        entry_price = _num(row.get("price"))
-        if not timestamp or symbol not in prices or entry_price is None or entry_price <= 0:
+        if not timestamp or symbol not in prices:
             continue
-
         elapsed_hours = (current_time - timestamp.astimezone(timezone.utc)).total_seconds() / 3600
-        raw_return = _round_pct((prices[symbol] - entry_price) / entry_price * 100)
-        action = row.get("action", "")
-        for field, hours in RETURN_HORIZONS.items():
-            result_field = field.replace("_return_pct", "_result")
-            existing_return = _num(row.get(field))
-            if existing_return is not None and row.get(result_field) in {"", None}:
-                row[result_field] = _judge_result(action, existing_return)
-            elif row.get(field) in {"", None} and elapsed_hours >= hours:
-                row[field] = raw_return
-                row[result_field] = _judge_result(action, raw_return)
+        reached = [horizon for horizon, hours in HORIZONS.items() if elapsed_hours >= hours]
+        if reached:
+            result = _check_result(row, prices[symbol])
+            if result:
+                row["result"] = result
+                row["result_at"] = snapshot.get("generated_at", "")
+                row["result_horizon"] = reached[-1]
 
     existing_keys = {(row.get("timestamp"), row.get("symbol")) for row in rows}
     for new_row in _build_rows(snapshot, decision):
@@ -283,75 +312,55 @@ def update_signal_history(snapshot: dict[str, Any], decision: dict[str, Any], hi
     return rows
 
 
-def _resolved_result(row: dict[str, Any]) -> str:
-    for field in ["after_24h_result", "after_4h_result", "after_1h_result"]:
-        result = row.get(field, "")
-        if result:
-            return result
-    return ""
+def _trade_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in rows if row.get("action") in {"允许做多", "允许做空"} and _num(row.get("risk_reward")) is not None]
 
 
-def _action_stats(rows: list[dict[str, Any]], action: str) -> dict[str, Any]:
-    action_rows = [row for row in rows if row.get("action") == action]
-    results = [_resolved_result(row) for row in action_rows]
-    resolved = [result for result in results if result]
-    if action == "WAIT":
-        correct = [result for result in resolved if result == "correct_wait"]
-        return {
-            "count": len(action_rows),
-            "correct": len(correct),
-            "wrong": len([result for result in resolved if result == "missed_opportunity"]),
-            "resolved": len(resolved),
-            "accuracy": round(len(correct) / len(resolved) * 100, 2) if resolved else None,
-        }
-
-    correct = [result for result in resolved if result == "correct"]
-    return {
-        "count": len(action_rows),
-        "correct": len(correct),
-        "wrong": len([result for result in resolved if result == "wrong"]),
-        "resolved": len(resolved),
-        "win_rate": round(len(correct) / len(resolved) * 100, 2) if resolved else None,
-    }
-
-
-def _recent_10(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    resolved_rows = [row for row in rows if _resolved_result(row)]
-    recent = resolved_rows[-10:]
-    wins = 0
-    losses = 0
-    for row in recent:
-        result = _resolved_result(row)
-        if result in {"correct", "correct_wait"}:
-            wins += 1
-        elif result in {"wrong", "missed_opportunity"}:
-            losses += 1
-    total = wins + losses
-    return {
-        "count": len(recent),
-        "wins": wins,
-        "losses": losses,
-        "accuracy": round(wins / total * 100, 2) if total else None,
-    }
+def _max_streak(results: list[str], target: str) -> int:
+    best = 0
+    current = 0
+    for result in results:
+        if result == target:
+            current += 1
+            best = max(best, current)
+        else:
+            current = 0
+    return best
 
 
 def build_signal_statistics(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    allow_long = _action_stats(rows, "ALLOW_LONG")
-    allow_short = _action_stats(rows, "ALLOW_SHORT")
-    wait = _action_stats(rows, "WAIT")
-    correct = int(allow_long["correct"]) + int(allow_short["correct"]) + int(wait["correct"])
-    wrong = int(allow_long["wrong"]) + int(allow_short["wrong"]) + int(wait["wrong"])
-    total_resolved = correct + wrong
+    trades = _trade_rows(rows)
+    resolved = [row for row in trades if row.get("result") in {"TP", "SL"}]
+    tp_count = len([row for row in resolved if row.get("result") == "TP"])
+    sl_count = len([row for row in resolved if row.get("result") == "SL"])
+    rr_values = [_num(row.get("risk_reward")) for row in trades if _num(row.get("risk_reward")) is not None]
+    avg_rr = round(mean(rr_values), 4) if rr_values else None
+    losses = sl_count
+    profit_factor = round(sum(_num(row.get("risk_reward")) or 0 for row in resolved if row.get("result") == "TP") / losses, 4) if losses else None
+    ev = None
+    if resolved:
+        win_rate_raw = tp_count / len(resolved)
+        avg_win = mean([_num(row.get("risk_reward")) or 0 for row in resolved if row.get("result") == "TP"]) if tp_count else 0
+        ev = round(win_rate_raw * avg_win - (1 - win_rate_raw) * 1, 4)
+    result_sequence = [row.get("result", "") for row in resolved]
+    recent = result_sequence[-10:]
     return {
         "total_signals": len(rows),
-        "resolved_signals": total_resolved,
-        "correct": correct,
-        "wrong": wrong,
-        "overall_accuracy": round(correct / total_resolved * 100, 2) if total_resolved else None,
-        "allow_long": allow_long,
-        "allow_short": allow_short,
-        "wait": wait,
-        "recent_10": _recent_10(rows),
+        "total_trades": len(trades),
+        "resolved_trades": len(resolved),
+        "tp_count": tp_count,
+        "sl_count": sl_count,
+        "win_rate": round(tp_count / len(resolved) * 100, 2) if resolved else None,
+        "average_rr": avg_rr,
+        "ev": ev,
+        "profit_factor": profit_factor,
+        "max_win_streak": _max_streak(result_sequence, "TP"),
+        "max_loss_streak": _max_streak(result_sequence, "SL"),
+        "recent_10": {
+            "results": recent,
+            "tp": len([r for r in recent if r == "TP"]),
+            "sl": len([r for r in recent if r == "SL"]),
+        },
     }
 
 
