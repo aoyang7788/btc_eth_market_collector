@@ -56,9 +56,98 @@ def _num(value: Any) -> float | None:
 def _fmt(value: Any) -> str:
     if value is None or value == "":
         return "缺失"
+    return translate_value(value)
+
+
+def translate_value(value: Any) -> str:
+    if value is None or value == "":
+        return "缺失"
     if isinstance(value, bool):
         return "是" if value else "否"
-    return str(value)
+    mapping = {
+        "LOOK_FOR_LONG": "允许做多",
+        "LOOK_FOR_SHORT": "允许做空",
+        "ALLOW_LONG": "允许做多",
+        "ALLOW_SHORT": "允许做空",
+        "WAIT": "观望等待",
+        "NO_TRADE": "不交易",
+        "LOW": "低风险",
+        "MEDIUM": "中风险",
+        "HIGH": "高风险",
+        "bullish": "多头",
+        "bearish": "空头",
+        "neutral": "中性",
+        "missing": "缺失",
+        "bullish_aligned": "多周期多头共振",
+        "bearish_aligned": "多周期空头共振",
+        "bullish_pullback": "多头回调结构",
+        "bearish_pullback": "空头反弹结构",
+        "trade_allowed": "允许交易",
+        "trade_blocked": "禁止交易",
+        "true": "是",
+        "false": "否",
+        "upper_half": "上半区",
+        "lower_half": "下半区",
+        "near_upper": "接近上轨",
+        "near_lower": "接近下轨",
+        "middle": "中轨附近",
+        "positive": "正值",
+        "negative": "负值",
+        "none": "无",
+        "TP": "止盈",
+        "SL": "止损",
+    }
+    return mapping.get(str(value), str(value))
+
+
+def translate_text(text: Any) -> str:
+    result = str(text)
+    replacements = [
+        ("three timeframe consistency", "多周期一致性"),
+        ("Bollinger position", "布林带位置"),
+        ("MACD histogram", "MACD柱状图"),
+        ("long short ratio long biased", "多空比偏多"),
+        ("long short ratio short biased", "多空比偏空"),
+        ("long short ratio balanced", "多空比均衡"),
+        ("funding positive", "资金费率为正"),
+        ("funding negative", "资金费率为负"),
+        ("funding neutral", "资金费率中性"),
+        ("oi rising", "OI上升"),
+        ("oi falling", "OI下降"),
+        ("oi flat", "OI持平"),
+        ("4h", "4小时"),
+        ("1h", "1小时"),
+        ("15m", "15分钟"),
+        ("LOOK_FOR_LONG", "允许做多"),
+        ("LOOK_FOR_SHORT", "允许做空"),
+        ("ALLOW_LONG", "允许做多"),
+        ("ALLOW_SHORT", "允许做空"),
+        ("NO_TRADE", "不交易"),
+        ("WAIT", "观望等待"),
+        ("LOW", "低风险"),
+        ("MEDIUM", "中风险"),
+        ("HIGH", "高风险"),
+        ("bullish_aligned", "多周期多头共振"),
+        ("bearish_aligned", "多周期空头共振"),
+        ("bullish_pullback", "多头回调结构"),
+        ("bearish_pullback", "空头反弹结构"),
+        ("upper_half", "上半区"),
+        ("lower_half", "下半区"),
+        ("near_upper", "接近上轨"),
+        ("near_lower", "接近下轨"),
+        ("middle", "中轨附近"),
+        ("positive", "正值"),
+        ("negative", "负值"),
+        ("none", "无"),
+        ("bullish", "多头"),
+        ("bearish", "空头"),
+        ("neutral", "中性"),
+        ("true", "是"),
+        ("false", "否"),
+    ]
+    for old, new in replacements:
+        result = result.replace(old, new)
+    return result
 
 
 def _fmt_price(value: Any) -> str:
@@ -103,32 +192,15 @@ def load_snapshot(snapshot_path: Path | None = None) -> dict[str, Any] | None:
 
 
 def _direction(value: Any) -> str:
-    return {
-        "bullish": "多头",
-        "bearish": "空头",
-        "neutral": "中性",
-        "missing": "缺失",
-    }.get(str(value), _fmt(value))
+    return translate_value(value)
 
 
 def _risk(value: Any) -> str:
-    return {
-        "LOW": "低风险",
-        "MEDIUM": "中风险",
-        "HIGH": "高风险",
-    }.get(str(value), _fmt(value))
+    return translate_value(value)
 
 
 def _consistency(value: Any) -> str:
-    return {
-        "bullish_aligned": "多周期多头共振",
-        "bearish_aligned": "多周期空头共振",
-        "bullish_pullback": "多头趋势回踩",
-        "bearish_pullback": "空头趋势反抽",
-        "mixed_neutral": "多周期中性混合",
-        "conflict": "多周期冲突",
-        "missing": "缺失",
-    }.get(str(value), _fmt(value))
+    return translate_value(value)
 
 
 def _macd(macd: dict[str, Any]) -> str:
@@ -334,6 +406,24 @@ def _reasons(snapshot_item: dict[str, Any], decision_item: dict[str, Any]) -> li
     return reasons
 
 
+def _latest_plan(symbol: str) -> dict[str, Any]:
+    path = output_dir() / "signal_history.csv"
+    try:
+        import csv
+
+        with path.open("r", newline="", encoding="utf-8-sig") as f:
+            rows = [row for row in csv.DictReader(f) if row.get("symbol") == symbol]
+        if rows:
+            return rows[-1]
+    except OSError:
+        pass
+    return {}
+
+
+def _clean_reason(reason: str) -> str:
+    return reason.lstrip("①②③④⑤⑥⑦⑧⑨0123456789. ")
+
+
 def _symbol_block(symbol: str, snapshot: dict[str, Any], decision: dict[str, Any]) -> list[str]:
     snapshot_item = snapshot.get("symbols", {}).get(symbol, {})
     decision_item = decision.get("symbols", {}).get(symbol, {})
@@ -342,71 +432,72 @@ def _symbol_block(symbol: str, snapshot: dict[str, Any], decision: dict[str, Any
     structures = decision_item.get("structures", {})
     price = snapshot_item.get("price", {}).get("last")
     reasons = _reasons(snapshot_item, decision_item)
+    plan = _latest_plan(symbol)
 
     return [
         "━━━━━━━━━━━━━━",
         "",
-        symbol,
+        f"【{symbol}】",
         "",
         "当前价格：",
         _fmt_price(price),
         "",
+        "核心指标：",
         "EMA5：",
         _fmt_price(tf4h.get("ema5")),
-        "",
         "EMA13：",
         _fmt_price(tf4h.get("ema13")),
-        "",
-        "布林带：",
+        "布林带位置：",
         _bollinger(price, tf4h.get("bollinger", {})),
         "",
-        "辅助参考：",
-        "",
-        "EMA50：",
-        _fmt_price(tf4h.get("ema50")),
-        "",
-        "EMA200：",
-        _fmt_price(tf4h.get("ema200")),
-        "",
-        "MACD：",
-        _macd(tf4h.get("macd", {})),
-        "",
+        "市场辅助：",
         "资金费率：",
         _fmt_percent(derivatives.get("funding_rate")),
-        "",
         "多空比：",
         _fmt(derivatives.get("long_short_ratio")),
-        "",
-        "持仓量：",
+        "持仓量OI：",
         _fmt_large(derivatives.get("open_interest")),
         "",
+        "周期结构：",
         "15分钟：",
         _direction(structures.get("15m")),
-        "",
         "1小时：",
         _direction(structures.get("1h")),
-        "",
         "4小时：",
         _direction(structures.get("4h")),
-        "",
         "多周期结构：",
         _consistency(decision_item.get("three_period_consistency")),
         "",
+        "交易决策：",
         "综合评分：",
         f"{_score(snapshot_item, decision_item)}分",
-        "",
         "风险等级：",
         _risk(decision_item.get("risk_level")),
-        "",
-        "建议：",
+        "建议动作：",
         _advice(decision_item),
-        "",
         "允许交易：",
-        "是" if decision_item.get("allow_trade") else "否",
+        translate_value(decision_item.get("allow_trade")),
+        "",
+        "交易计划：",
+        "入场价：",
+        _fmt_price(plan.get("entry_price") or price),
+        "止损价：",
+        _fmt_price(plan.get("stop_loss")),
+        "止盈价：",
+        _fmt_price(plan.get("take_profit")),
+        "盈亏比：",
+        _fmt(plan.get("risk_reward")),
+        "",
+        "辅助参考：",
+        "EMA50：",
+        _fmt_price(tf4h.get("ema50")),
+        "EMA200：",
+        _fmt_price(tf4h.get("ema200")),
+        "MACD：",
+        _macd(tf4h.get("macd", {})),
         "",
         "原因：",
-        "",
-        *reasons,
+        *[f"{index}. {_clean_reason(reason)}" for index, reason in enumerate(reasons, 1)],
         "",
     ]
 

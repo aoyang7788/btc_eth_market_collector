@@ -31,7 +31,7 @@ if load_dotenv:
 OUTPUT_DIR = BASE_DIR / os.getenv("OUTPUT_DIR", "outputs")
 
 from health_monitor import format_health_text, read_status  # noqa: E402
-from telegram_notifier import send_test_message  # noqa: E402
+from telegram_notifier import send_test_message, translate_text, translate_value  # noqa: E402
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
@@ -50,10 +50,8 @@ def _read_text(path: Path) -> str | None:
 
 def _fmt(value: Any) -> str:
     if value is None:
-        return "missing"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
+        return "缺失"
+    return translate_value(value)
 
 
 def _cn_action(value: Any) -> str:
@@ -63,8 +61,8 @@ def _cn_action(value: Any) -> str:
         "ALLOW_LONG": "允许做多",
         "ALLOW_SHORT": "允许做空",
         "WAIT": "观望等待",
-        "NO_TRADE": "禁止交易",
-    }.get(str(value), _fmt(value))
+        "NO_TRADE": "不交易",
+    }.get(str(value), translate_value(value))
 
 
 def _cn_risk(value: Any) -> str:
@@ -72,7 +70,7 @@ def _cn_risk(value: Any) -> str:
         "LOW": "低风险",
         "MEDIUM": "中风险",
         "HIGH": "高风险",
-    }.get(str(value), _fmt(value))
+    }.get(str(value), translate_value(value))
 
 
 def _cn_trend(value: Any) -> str:
@@ -81,19 +79,19 @@ def _cn_trend(value: Any) -> str:
         "bearish": "空头",
         "neutral": "中性",
         "missing": "缺失",
-    }.get(str(value), _fmt(value))
+    }.get(str(value), translate_value(value))
 
 
 def _cn_consistency(value: Any) -> str:
     return {
         "bullish_aligned": "多周期多头共振",
         "bearish_aligned": "多周期空头共振",
-        "bullish_pullback": "多头趋势回踩",
-        "bearish_pullback": "空头趋势反抽",
+        "bullish_pullback": "多头回调结构",
+        "bearish_pullback": "空头反弹结构",
         "mixed_neutral": "多周期中性混合",
         "conflict": "多周期冲突",
         "missing": "缺失",
-    }.get(str(value), _fmt(value))
+    }.get(str(value), translate_value(value))
 
 
 def _load_reports() -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -152,7 +150,7 @@ def build_symbol_detail(symbol: str) -> str:
     derivatives = snap.get("derivatives", {})
     tf = snap.get("timeframes", {})
     reasons = dec.get("reason", [])
-    reason_text = "\n".join(f"- {item}" for item in reasons[:25]) if reasons else "- none"
+    reason_text = "\n".join(f"- {translate_text(item)}" for item in reasons[:25]) if reasons else "- 无"
     if len(reasons) > 25:
         reason_text += f"\n- ... 还有 {len(reasons) - 25} 条"
 
@@ -171,7 +169,7 @@ def build_symbol_detail(symbol: str) -> str:
             f"建议：{_cn_action(dec.get('suggested_action'))}",
             f"风险等级：{_cn_risk(dec.get('risk_level'))}",
             "",
-            "reason[]：",
+            "原因：",
             reason_text,
         ]
     )
@@ -181,26 +179,7 @@ def build_decision_summary() -> str:
     text = _read_text(OUTPUT_DIR / "market_decision.md")
     if not text:
         return MISSING_REPORT_TEXT
-    replacements = {
-        "ALLOW_LONG": "允许做多",
-        "ALLOW_SHORT": "允许做空",
-        "LOOK_FOR_LONG": "允许做多",
-        "LOOK_FOR_SHORT": "允许做空",
-        "WAIT": "观望等待",
-        "NO_TRADE": "禁止交易",
-        "LOW": "低风险",
-        "MEDIUM": "中风险",
-        "HIGH": "高风险",
-        "bullish_aligned": "多周期多头共振",
-        "bearish_aligned": "多周期空头共振",
-        "bullish": "多头",
-        "bearish": "空头",
-        "neutral": "中性",
-        "trade_allowed": "允许交易",
-        "trade_blocked": "禁止交易",
-    }
-    for old, new in replacements.items():
-        text = text.replace(old, new)
+    text = translate_text(text)
     max_len = 3500
     if len(text) <= max_len:
         return text
@@ -241,7 +220,7 @@ def build_stats_text() -> str:
 
     return "\n".join(
         [
-            "BTC ETH Market Collector",
+            "BTC/ETH 信号统计",
             "",
             f"总信号：{stats.get('total_signals', 0)}",
             "",
@@ -253,7 +232,7 @@ def build_stats_text() -> str:
             f"最大连赢：{stats.get('max_win_streak', 0)}",
             f"最大连亏：{stats.get('max_loss_streak', 0)}",
             "",
-            f"最近10次：{' '.join('止盈' if item == 'TP' else '止损' if item == 'SL' else item for item in recent.get('results', [])) or '暂无已完成交易'}",
+            f"最近10次：{' '.join(translate_value(item) for item in recent.get('results', [])) or '暂无已完成交易'}",
         ]
     )
 
