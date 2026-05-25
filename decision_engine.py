@@ -4,6 +4,7 @@ from typing import Any
 
 
 ACTIONS = {"LOOK_FOR_LONG", "LOOK_FOR_SHORT", "WAIT", "NO_TRADE"}
+OBSERVATION_ONLY_SYMBOLS = {"ETHUSDT"}
 
 
 def _num(value: Any) -> float | None:
@@ -215,13 +216,20 @@ def evaluate_symbol(symbol: str, symbol_data: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_market_decision(snapshot: dict[str, Any]) -> dict[str, Any]:
+    symbols = {}
+    for symbol, symbol_data in snapshot.get("symbols", {}).items():
+        decision = evaluate_symbol(symbol, symbol_data)
+        if symbol in OBSERVATION_ONLY_SYMBOLS:
+            decision["observation_only"] = True
+            decision.pop("allow_long", None)
+            decision.pop("allow_short", None)
+            decision.pop("allow_trade", None)
+            decision.pop("suggested_action", None)
+        symbols[symbol] = decision
     return {
         "generated_at": snapshot.get("generated_at"),
         "source_snapshot": "market_snapshot.json",
         "mode": "decision_only_no_order_execution",
         "allowed_actions": sorted(ACTIONS),
-        "symbols": {
-            symbol: evaluate_symbol(symbol, symbol_data)
-            for symbol, symbol_data in snapshot.get("symbols", {}).items()
-        },
+        "symbols": symbols,
     }

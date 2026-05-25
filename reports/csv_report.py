@@ -25,11 +25,15 @@ FIELDS = [
     "reason",
 ]
 
+SUMMARY_SYMBOLS = {"BTCUSDT"}
+
 
 def write_signal_summary(snapshot: dict[str, Any], path: Path) -> None:
     rows = []
     generated_at = snapshot.get("generated_at")
     for symbol, data in snapshot.get("symbols", {}).items():
+        if symbol not in SUMMARY_SYMBOLS:
+            continue
         rows.append(
             {
                 "timestamp": generated_at,

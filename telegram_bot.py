@@ -132,6 +132,45 @@ def _fmt_price(value: Any) -> str:
         return "暂无"
 
 
+def _bollinger_position(price: Any, bollinger: dict[str, Any]) -> str:
+    try:
+        if not isinstance(bollinger, dict):
+            return "缺失"
+        value = float(price)
+        upper = float(bollinger.get("upper"))
+        middle = float(bollinger.get("middle"))
+        lower = float(bollinger.get("lower"))
+    except (TypeError, ValueError):
+        return "缺失"
+    if value > upper:
+        return "上轨上方"
+    if value < lower:
+        return "下轨下方"
+    if value >= middle:
+        return "中轨上方"
+    return "中轨下方"
+
+
+def _eth_observation_lines(snap: dict[str, Any], dec: dict[str, Any]) -> list[str]:
+    price = snap.get("price", {})
+    derivatives = snap.get("derivatives", {})
+    tf = snap.get("timeframes", {})
+    tf4h = tf.get("4h", {})
+    structures = dec.get("structures", {})
+    return [
+        "ETH 当前仅观察，不参与交易统计。",
+        f"当前价格：{_fmt(price.get('last'))}",
+        f"EMA5：{_fmt(tf4h.get('ema5'))}",
+        f"EMA13：{_fmt(tf4h.get('ema13'))}",
+        f"布林带位置：{_bollinger_position(price.get('last'), tf4h.get('bollinger', {}))}",
+        f"资金费率：{_fmt(derivatives.get('funding_rate'))}",
+        f"多空比：{_fmt(derivatives.get('long_short_ratio'))}",
+        f"OI：{_fmt(derivatives.get('open_interest'))}",
+        f"周期结构：15m {_cn_trend(structures.get('15m'))} / 1h {_cn_trend(structures.get('1h'))} / 4h {_cn_trend(structures.get('4h'))}",
+        f"多周期结构：{_cn_consistency(dec.get('three_period_consistency'))}",
+    ]
+
+
 def _plan_lines(symbol: str, current_price: Any, decision_item: dict[str, Any]) -> list[str]:
     plan = _latest_plan(symbol)
     stop_loss = _fmt_price(plan.get("stop_loss"))
@@ -167,6 +206,9 @@ def build_market_summary() -> str:
             lines.extend([f"{symbol}: missing", ""])
             continue
         tf = snap.get("timeframes", {})
+        if symbol == "ETHUSDT":
+            lines.extend([symbol, *_eth_observation_lines(snap, dec), ""])
+            continue
         lines.extend(
             [
                 f"{symbol}",
@@ -192,6 +234,9 @@ def build_symbol_detail(symbol: str) -> str:
     dec = _symbol_decision(decision, symbol)
     if not snap or not dec:
         return f"{symbol} 报告缺失，请先运行 python main.py --once"
+
+    if symbol == "ETHUSDT":
+        return "\n".join([f"{symbol} 观察报告", "", *_eth_observation_lines(snap, dec)])
 
     price = snap.get("price", {})
     derivatives = snap.get("derivatives", {})
@@ -232,7 +277,7 @@ def build_decision_summary() -> str:
     snapshot, decision = _load_reports()
     if snapshot and decision:
         plan_lines = ["", "## 交易计划", ""]
-        for symbol in ["BTCUSDT", "ETHUSDT"]:
+        for symbol in ["BTCUSDT"]:
             snap = _symbol_snapshot(snapshot, symbol)
             dec = _symbol_decision(decision, symbol)
             if not snap or not dec:
@@ -286,7 +331,7 @@ def build_stats_text() -> str:
 
     return "\n".join(
         [
-            "BTC/ETH 信号统计",
+            "BTC 信号统计",
             "",
             f"总信号：{stats.get('total_signals', 0)}",
             "",

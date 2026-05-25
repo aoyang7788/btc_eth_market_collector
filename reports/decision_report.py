@@ -32,16 +32,22 @@ def write_decision_markdown(decision: dict[str, Any], path: Path) -> None:
                 f"- 1h结构判断：{structures.get('1h')}",
                 f"- 4h结构判断：{structures.get('4h')}",
                 f"- 三周期一致性判断：{data.get('three_period_consistency')}",
-                f"- 是否允许做多：{str(data.get('allow_long')).lower()}",
-                f"- 是否允许做空：{str(data.get('allow_short')).lower()}",
-                f"- 是否允许交易：{str(data.get('allow_trade')).lower()}",
                 f"- 风险等级：{data.get('risk_level')}",
-                f"- 建议动作：{data.get('suggested_action')}",
                 "",
                 "### 原因",
                 "",
             ]
         )
+        if data.get("observation_only"):
+            lines.insert(-3, "- ETH 当前仅观察，不参与交易统计。")
+        else:
+            insert_at = len(lines) - 3
+            lines[insert_at:insert_at] = [
+                f"- 是否允许做多：{str(data.get('allow_long')).lower()}",
+                f"- 是否允许做空：{str(data.get('allow_short')).lower()}",
+                f"- 是否允许交易：{str(data.get('allow_trade')).lower()}",
+                f"- 建议动作：{data.get('suggested_action')}",
+            ]
         reasons = data.get("reason", [])
         if reasons:
             lines.extend([f"- {item}" for item in reasons])

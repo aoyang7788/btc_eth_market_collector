@@ -38,6 +38,8 @@ HORIZONS = {
     "24h": 24,
 }
 
+TRADE_STAT_SYMBOLS = {"BTCUSDT"}
+
 
 def parse_iso(value: str) -> datetime | None:
     try:
@@ -308,6 +310,8 @@ def _build_rows(snapshot: dict[str, Any], decision: dict[str, Any]) -> list[dict
     rows = []
     timestamp = decision.get("generated_at", "")
     for symbol, decision_item in decision.get("symbols", {}).items():
+        if symbol not in TRADE_STAT_SYMBOLS:
+            continue
         snapshot_item = snapshot.get("symbols", {}).get(symbol, {})
         tf15 = snapshot_item.get("timeframes", {}).get("15m", {})
         tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
@@ -372,7 +376,7 @@ def _check_result(row: dict[str, Any], price: float) -> str:
 
 
 def update_signal_history(snapshot: dict[str, Any], decision: dict[str, Any], history_path: Path) -> list[dict[str, Any]]:
-    rows = read_history(history_path)
+    rows = [row for row in read_history(history_path) if row.get("symbol") in TRADE_STAT_SYMBOLS]
     prices = _price_map(snapshot)
     current_time = parse_iso(snapshot.get("generated_at", "")) or datetime.now(timezone.utc)
 

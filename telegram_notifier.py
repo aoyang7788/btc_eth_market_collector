@@ -432,6 +432,9 @@ def _clean_reason(reason: str) -> str:
 
 
 def _symbol_block(symbol: str, snapshot: dict[str, Any], decision: dict[str, Any]) -> list[str]:
+    if symbol == "ETHUSDT":
+        return _eth_observation_block(snapshot, decision)
+
     snapshot_item = snapshot.get("symbols", {}).get(symbol, {})
     decision_item = decision.get("symbols", {}).get(symbol, {})
     tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
@@ -522,6 +525,52 @@ def _symbol_block(symbol: str, snapshot: dict[str, Any], decision: dict[str, Any
     ]
 
 
+def _eth_observation_block(snapshot: dict[str, Any], decision: dict[str, Any]) -> list[str]:
+    symbol = "ETHUSDT"
+    snapshot_item = snapshot.get("symbols", {}).get(symbol, {})
+    decision_item = decision.get("symbols", {}).get(symbol, {})
+    tf4h = snapshot_item.get("timeframes", {}).get("4h", {})
+    derivatives = snapshot_item.get("derivatives", {})
+    structures = decision_item.get("structures", {})
+    price = snapshot_item.get("price", {}).get("last")
+
+    return [
+        "━━━━━━━━━━━━━━",
+        "",
+        f"【{symbol}】",
+        "",
+        "ETH 当前仅观察，不参与交易统计。",
+        "",
+        "当前价格：",
+        _fmt_price(price),
+        "",
+        "EMA5：",
+        _fmt_price(tf4h.get("ema5")),
+        "EMA13：",
+        _fmt_price(tf4h.get("ema13")),
+        "布林带位置：",
+        _bollinger(price, tf4h.get("bollinger", {})),
+        "",
+        "资金费率：",
+        _fmt_percent(derivatives.get("funding_rate")),
+        "多空比：",
+        _fmt(derivatives.get("long_short_ratio")),
+        "持仓量OI：",
+        _fmt_large(derivatives.get("open_interest")),
+        "",
+        "周期结构：",
+        "15分钟：",
+        _direction(structures.get("15m")),
+        "1小时：",
+        _direction(structures.get("1h")),
+        "4小时：",
+        _direction(structures.get("4h")),
+        "多周期结构：",
+        _consistency(decision_item.get("three_period_consistency")),
+        "",
+    ]
+
+
 def build_telegram_message(decision: dict[str, Any] | None = None, snapshot: dict[str, Any] | None = None) -> str:
     data = decision or load_decision()
     snapshot_data = snapshot or load_snapshot()
@@ -531,8 +580,8 @@ def build_telegram_message(decision: dict[str, Any] | None = None, snapshot: dic
         return "BTC/ETH 市场分析完成，但 market_snapshot.json 暂不可读。"
 
     lines = ["📊 BTC/ETH市场分析完成", "", "时间：", _fmt(data.get("generated_at")), ""]
-    for symbol in ["BTCUSDT", "ETHUSDT"]:
-        lines.extend(_symbol_block(symbol, snapshot_data, data))
+    lines.extend(_symbol_block("BTCUSDT", snapshot_data, data))
+    lines.extend(_eth_observation_block(snapshot_data, data))
     return "\n".join(lines).strip()
 
 
