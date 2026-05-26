@@ -9,6 +9,7 @@ from typing import Any
 
 from collectors.binance_futures import BinanceFuturesClient
 from collectors.coinglass import get_liquidation_map_placeholder
+from candidate_observer import update_candidate_observer
 from config import RUN_INTERVAL_MINUTES, SYMBOLS, output_dir
 from decision_engine import build_market_decision
 from health_monitor import (
@@ -183,6 +184,7 @@ def write_outputs(snapshot: dict[str, Any], out_dir: Path | None = None) -> dict
     signal_stats = build_signal_statistics(history_rows)
     write_statistics_json(signal_stats, signal_statistics_path)
     write_performance_report(signal_stats, performance_report_path)
+    candidate_result = update_candidate_observer(snapshot, decision, out)
     return {
         "json_path": str(json_path),
         "markdown_path": str(markdown_path),
@@ -192,6 +194,7 @@ def write_outputs(snapshot: dict[str, Any], out_dir: Path | None = None) -> dict
         "signal_history_path": str(signal_history_path),
         "performance_report_path": str(performance_report_path),
         "signal_statistics_path": str(signal_statistics_path),
+        "candidate_observer_path": str(candidate_result["path"]),
     }
 
 
@@ -369,6 +372,7 @@ def main() -> None:
         print(f"generated: {paths['signal_history_path']}")
         print(f"generated: {paths['performance_report_path']}")
         print(f"generated: {paths['signal_statistics_path']}")
+        print(f"generated: {paths['candidate_observer_path']}")
 
     if args.loop:
         print(f"{iso_now()} collector loop started, interval={args.interval} minutes")

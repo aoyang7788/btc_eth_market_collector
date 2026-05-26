@@ -431,6 +431,60 @@ def _clean_reason(reason: str) -> str:
     return reason.lstrip("①②③④⑤⑥⑦⑧⑨0123456789. ")
 
 
+def _latest_candidate_observer() -> dict[str, Any]:
+    path = output_dir() / "candidate_observer.csv"
+    try:
+        import csv
+
+        with path.open("r", newline="", encoding="utf-8-sig") as f:
+            rows = [row for row in csv.DictReader(f) if row.get("symbol") == "BTCUSDT"]
+        if rows:
+            return rows[-1]
+    except OSError:
+        pass
+    return {}
+
+
+def _candidate_status(value: Any) -> str:
+    mapping = {
+        "waiting": "等待回踩",
+        "filled": "已触发入场",
+        "tp": "已止盈",
+        "sl": "已止损",
+        "expired": "已过期",
+        "": "暂无候选信号",
+    }
+    return mapping.get(str(value or ""), str(value or "暂无候选信号"))
+
+
+def _candidate_direction(value: Any) -> str:
+    mapping = {"long": "做多", "short": "做空", "": "暂无"}
+    return mapping.get(str(value or ""), str(value or "暂无"))
+
+
+def _candidate_observer_block() -> list[str]:
+    row = _latest_candidate_observer()
+    return [
+        "【候选策略观察】",
+        "BTC",
+        "方向：",
+        _candidate_direction(row.get("direction")),
+        "实体中位入场：",
+        _fmt_plan_price(row.get("body_mid_entry")),
+        "状态：",
+        _candidate_status(row.get("status")),
+        "等待窗口：",
+        f"{row.get('wait_window_bars') or 4} 根15m",
+        "止损：",
+        _fmt_plan_price(row.get("stop_loss")),
+        "止盈：",
+        _fmt_plan_price(row.get("take_profit")),
+        "RR：",
+        f"1:{row.get('risk_reward')}" if row.get("risk_reward") else "暂无",
+        "",
+    ]
+
+
 def _symbol_block(symbol: str, snapshot: dict[str, Any], decision: dict[str, Any]) -> list[str]:
     if symbol == "ETHUSDT":
         return _eth_observation_block(snapshot, decision)
@@ -581,6 +635,7 @@ def build_telegram_message(decision: dict[str, Any] | None = None, snapshot: dic
 
     lines = ["📊 BTC/ETH市场分析完成", "", "时间：", _fmt(data.get("generated_at")), ""]
     lines.extend(_symbol_block("BTCUSDT", snapshot_data, data))
+    lines.extend(_candidate_observer_block())
     lines.extend(_eth_observation_block(snapshot_data, data))
     return "\n".join(lines).strip()
 
