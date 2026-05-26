@@ -1,0 +1,11 @@
+[Unit]
+Description=BTC/ETH Market Collector Candidate Observer Reporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/btc_eth_market_collector
+EnvironmentFile=-/opt/btc_eth_market_collector/.env
+ExecStart=/opt/btc_eth_market_collector/.venv/bin/python /opt/btc_eth_market_collector/candidate_reporter.py
+

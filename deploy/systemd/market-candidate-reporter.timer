@@ -1,0 +1,13 @@
+[Unit]
+Description=Run BTC/ETH Candidate Observer Reporter at 09:00 and 21:00 Asia/Shanghai
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 21:00:00
+Persistent=true
+Unit=market-candidate-reporter.service
+Timezone=Asia/Shanghai
+
+[Install]
+WantedBy=timers.target
+
